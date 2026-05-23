@@ -1,2 +1,4 @@
 (library
- (name freight))
+ (name freight)
+ (libraries angstrom yojson re)
+ (flags (:standard -w @A-4-33-40-41-42-43-34-44)))

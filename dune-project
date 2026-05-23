@@ -5,7 +5,7 @@
 (generate_opam_files true)
 
 (source
- (github username/reponame))
+ (github aktersnurra/freight.ml))
 
 (authors "Author Name <author@example.com>")
 
@@ -17,10 +17,16 @@
 
 (package
  (name freight)
- (synopsis "A short synopsis")
- (description "A longer description")
- (depends ocaml)
+ (synopsis "Neovim HTTP client plugin core library")
+ (description "Core OCaml library for parsing, executing, and rendering HTTP requests for freight.ml")
+ (depends
+  ocaml
+  dune
+  angstrom
+  yojson
+  re
+  ounit2)
  (tags
-  ("add topics" "to describe" your project)))
+  (neovim http ocaml)))
 
 ; See the complete stanza docs at https://dune.readthedocs.io/en/stable/reference/dune-project/index.html

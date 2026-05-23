@@ -3,12 +3,12 @@ opam-version: "2.0"
 synopsis: "Neovim HTTP client plugin core library"
 description:
   "Core OCaml library for parsing, executing, and rendering HTTP requests for freight.ml"
-maintainer: ["Maintainer Name <maintainer@example.com>"]
-authors: ["Author Name <author@example.com>"]
+maintainer: ["aktersnurra"]
+authors: ["aktersnurra"]
 license: "LICENSE"
 tags: ["neovim" "http" "ocaml"]
 homepage: "https://github.com/aktersnurra/freight.ml"
-doc: "https://url/to/documentation"
+doc: "https://github.com/aktersnurra/freight.ml"
 bug-reports: "https://github.com/aktersnurra/freight.ml/issues"
 depends: [
   "ocaml"
@@ -16,7 +16,7 @@ depends: [
   "angstrom"
   "yojson"
   "re"
-  "ounit2"
+  "ounit2" {with-test}
   "odoc" {with-doc}
 ]
 build: [

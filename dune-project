@@ -7,13 +7,13 @@
 (source
  (github aktersnurra/freight.ml))
 
-(authors "Author Name <author@example.com>")
+(authors "aktersnurra")
 
-(maintainers "Maintainer Name <maintainer@example.com>")
+(maintainers "aktersnurra")
 
 (license LICENSE)
 
-(documentation https://url/to/documentation)
+(documentation https://github.com/aktersnurra/freight.ml)
 
 (package
  (name freight)
@@ -25,7 +25,7 @@
   angstrom
   yojson
   re
-  ounit2)
+  (ounit2 :with-test))
  (tags
   (neovim http ocaml)))
 

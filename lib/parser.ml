@@ -33,9 +33,19 @@ let parse_name line =
   else None
 
 let parse_request_line line =
-  match String.split_on_char ' ' (trim line) |> List.filter (( <> ) "") with
-  | method_ :: url_parts -> Ok (Ast.method_of_string method_, String.concat " " url_parts)
-  | [] -> Error "missing request line"
+  let open Angstrom in
+  let space = satisfy (function ' ' | '\t' -> true | _ -> false) in
+  let token = take_while1 (function ' ' | '\t' -> false | _ -> true) in
+  let parser =
+    token >>= fun method_ ->
+    skip_many1 space *> take_while (fun _ -> true) >>| fun url ->
+    (Ast.method_of_string method_, trim url)
+  in
+  match parse_string ~consume:All parser (trim line) with
+  | Ok (_, "") -> Error "missing request URL"
+  | Ok request_line -> Ok request_line
+  | Error _ when trim line = "" -> Error "missing request line"
+  | Error _ -> Error "missing request URL"
 
 let split_at_blank lines =
   let rec loop before = function
@@ -46,14 +56,14 @@ let split_at_blank lines =
   loop [] lines
 
 let parse_header line =
-  match String.index_opt line ':' with
-  | None -> None
-  | Some index ->
-      let key = String.sub line 0 index |> trim in
-      let value =
-        String.sub line (index + 1) (String.length line - index - 1) |> trim
-      in
-      if key = "" then None else Some (key, value)
+  let open Angstrom in
+  let parser =
+    take_till (Char.equal ':') >>= fun key ->
+    char ':' *> take_while (fun _ -> true) >>| fun value -> (trim key, trim value)
+  in
+  match parse_string ~consume:All parser line with
+  | Ok ("", _) | Error _ -> None
+  | Ok header -> Some header
 
 let parse_body lines =
   let body_lines =
@@ -99,31 +109,29 @@ let parse_block block =
   skip_leading_metadata None block
 
 let parse_source source =
-  let parser = Angstrom.(take_while (fun _ -> true) <* end_of_input) in
-  match Angstrom.parse_string ~consume:All parser source with
-  | Error message -> make_error message
-  | Ok parsed_source ->
-      let blocks = split_lines parsed_source |> split_blocks in
-      let rec loop requests = function
-        | [] -> Ok { Ast.requests = List.rev requests; path = "" }
-        | block :: rest -> (
-            match parse_block block with
-            | Ok request -> loop (request :: requests) rest
-            | Error error -> Error error)
-      in
-      loop [] blocks
+  let blocks = split_lines source |> split_blocks in
+  let rec loop requests = function
+    | [] -> Ok { Ast.requests = List.rev requests; path = "" }
+    | block :: rest -> (
+        match parse_block block with
+        | Ok request -> loop (request :: requests) rest
+        | Error error -> Error error)
+  in
+  loop [] blocks
 
 let parse_string = parse_source
 
 let parse_file path =
   try
     let channel = open_in path in
-    let length = in_channel_length channel in
-    let source = really_input_string channel length in
-    close_in channel;
-    match parse_source source with
-    | Ok file -> Ok { file with Ast.path }
-    | Error error -> Error error
+    Fun.protect
+      ~finally:(fun () -> close_in_noerr channel)
+      (fun () ->
+        let length = in_channel_length channel in
+        let source = really_input_string channel length in
+        match parse_source source with
+        | Ok file -> Ok { file with Ast.path }
+        | Error error -> Error error)
   with Sys_error message -> make_error message
 
 let request_at_cursor requests cursor_line =

@@ -122,5 +122,7 @@ let freight_run ~rpc state =
            Freight.Buffer.filetype_of_content_type
              (Freight.Response.detect_content_type response)
          in
+         let req_name = Option.value request.Freight.Ast.name ~default:"" in
+         state.State.env <- Freight.Chaining.inject ~name:req_name response state.State.env;
          Scratch.show ~rpc ~name ~filetype
            ~lines:(Freight.Response.render response))

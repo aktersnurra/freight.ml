@@ -117,5 +117,10 @@ let freight_run ~rpc state =
        match Freight.Response.parse_curl_output raw request with
        | Error msg -> show_error ~rpc (Printf.sprintf "parse error: %s" msg)
        | Ok response ->
-         Scratch.show ~rpc ~name:"freight://response" ~filetype:"text"
+         let name = Freight.Buffer.buffer_name request in
+         let filetype =
+           Freight.Buffer.filetype_of_content_type
+             (Freight.Response.detect_content_type response)
+         in
+         Scratch.show ~rpc ~name ~filetype
            ~lines:(Freight.Response.render response))

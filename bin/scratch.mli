@@ -1,6 +1,6 @@
 val show
-  :  client:[ `blocking ] Vcaml.Client.t
+  :  rpc:Rpc.t
   -> name:string
   -> filetype:string
   -> lines:string list
-  -> unit Async.Deferred.Or_error.t
+  -> unit Async.Deferred.t

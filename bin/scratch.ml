@@ -1,26 +1,20 @@
+open Core
 open Async
-open Vcaml
 
-let show ~client ~name ~filetype ~lines =
-  let open Deferred.Or_error.Let_syntax in
-  let%bind buf = Buffer.create [%here] client ~listed:false ~scratch:true in
-  let%bind () = Buffer.set_name [%here] client (Buffer.Or_current.Id buf) name in
-  (* Use exec_viml to open the buffer in a vertical split and make it current *)
-  let buf_id = (buf :> int) in
-  let%bind () =
-    Nvim.exec_viml [%here] client (Printf.sprintf "vsplit | buffer %d" buf_id)
-  in
-  let%bind () =
-    Buffer.set_lines
-      [%here]
-      client
-      (Buffer.Or_current.Id buf)
-      ~start:0
-      ~end_:(-1)
-      ~strict_indexing:false
-      lines
-  in
-  let%bind () =
-    Buffer.Option.set [%here] client (Buffer.Or_current.Id buf) Filetype filetype
-  in
-  Buffer.Option.set [%here] client (Buffer.Or_current.Id buf) Modifiable false
+let nvim_call rpc method_ params =
+  match%map Rpc.call rpc method_ params with
+  | Ok result -> result
+  | Error e -> failwithf "nvim call %s failed: %s" method_ e ()
+
+let show ~rpc ~name ~filetype ~lines =
+  let%bind buf = nvim_call rpc "nvim_create_buf" [ Msgpck.Bool false; Msgpck.Bool true ] in
+  let handle = match buf with Msgpck.Int n -> n | _ -> failwith "expected buffer handle" in
+  let%bind _ = nvim_call rpc "nvim_buf_set_name" [ Msgpck.Int handle; Msgpck.String name ] in
+  let%bind _ = nvim_call rpc "nvim_buf_set_option" [ Msgpck.Int handle; Msgpck.String "buftype"; Msgpck.String "nofile" ] in
+  let%bind _ = nvim_call rpc "nvim_buf_set_option" [ Msgpck.Int handle; Msgpck.String "filetype"; Msgpck.String filetype ] in
+  let%bind _ = nvim_call rpc "nvim_buf_set_option" [ Msgpck.Int handle; Msgpck.String "modifiable"; Msgpck.Bool true ] in
+  let msgpack_lines = Msgpck.List (List.map lines ~f:(fun l -> Msgpck.String l)) in
+  let%bind _ = nvim_call rpc "nvim_buf_set_lines" [ Msgpck.Int handle; Msgpck.Int 0; Msgpck.Int (-1); Msgpck.Bool false; msgpack_lines ] in
+  let%bind _ = nvim_call rpc "nvim_buf_set_option" [ Msgpck.Int handle; Msgpck.String "modifiable"; Msgpck.Bool false ] in
+  let%map _ = nvim_call rpc "nvim_command" [ Msgpck.String (Printf.sprintf "split | buffer %d" handle) ] in
+  ()

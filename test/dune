@@ -4,4 +4,4 @@
 
 (test
  (name test_qcheck)
- (libraries freight qcheck-core))
+ (libraries freight qcheck-core qcheck-core.runner))

@@ -242,6 +242,32 @@ let test_pretty_print_json _ =
   assert_equal "{ \"token\": \"abc\" }"
     (Freight.Response.pretty_print_body Freight.Response.Json "{\"token\":\"abc\"}")
 
+let login_response =
+  {
+    Freight.Ast.status = 200;
+    status_text = "OK";
+    headers = [ ("X-Request-Id", "req-1") ];
+    body = "{\"token\":\"abc\",\"user\":{\"id\":\"42\"}}";
+    duration_ms = 10;
+    request = response_request;
+  }
+
+let test_extract_body_path _ =
+  assert_equal (Some "42")
+    (Freight.Chaining.extract login_response
+       (Freight.Chaining.Response_body [ "user"; "id" ]))
+
+let test_extract_header _ =
+  assert_equal (Some "req-1")
+    (Freight.Chaining.extract login_response
+       (Freight.Chaining.Response_header "x-request-id"))
+
+let test_inject_named_response _ =
+  let env = Freight.Chaining.inject ~name:"login" login_response Freight.Env.empty in
+  assert_equal (Some "abc") (Freight.Env.find env "login.response.body.token");
+  assert_equal (Some "req-1")
+    (Freight.Env.find env "login.response.headers.X-Request-Id")
+
 let suite =
   "freight"
   >::: [
@@ -273,6 +299,9 @@ let suite =
          "render_falls_back_to_invalid_json_body"
          >:: test_render_falls_back_to_invalid_json_body;
          "pretty_print_json" >:: test_pretty_print_json;
+         "extract_body_path" >:: test_extract_body_path;
+         "extract_header" >:: test_extract_header;
+         "inject_named_response" >:: test_inject_named_response;
        ]
 
 let () = run_test_tt_main suite

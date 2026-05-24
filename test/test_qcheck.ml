@@ -3,28 +3,25 @@ open Freight
 
 (* ── Generators ─────────────────────────────────────────────────────────── *)
 
-(* All 9 named method variants. Custom strings are already uppercased and are
-   not any of the 9 standard names, so the method_of_string roundtrip holds. *)
 let standard_methods =
   [ "GET"; "POST"; "PUT"; "PATCH"; "DELETE"; "HEAD"; "OPTIONS"; "TRACE"; "CONNECT" ]
 
 let gen_named_method =
-  Gen.oneofl
-    Ast.
-      [ Get; Post; Put; Patch; Delete; Head; Options; Trace; Connect ]
+  Gen.oneof_list
+    Ast.[ Get; Post; Put; Patch; Delete; Head; Options; Trace; Connect ]
 
+(* Uppercase A-Z strings; property uses assume to skip standard method names *)
 let gen_custom_method_string =
-  Gen.such_that
-    (fun s -> s <> "" && not (List.mem s standard_methods))
-    (Gen.string_size ~gen:(Gen.char_range 'A' 'Z') (Gen.int_range 1 12))
+  Gen.string_size ~gen:(Gen.char_range 'A' 'Z') (Gen.int_range 1 12)
 
-(* A valid env variable key: [A-Za-z_][A-Za-z0-9_]* — matches the regex in env.ml *)
+(* A valid env key: [A-Za-z_][A-Za-z0-9_]* — matches the regex in env.ml *)
 let gen_env_key =
   Gen.map2
     (fun first rest -> String.make 1 first ^ rest)
-    (Gen.oneof [ Gen.char_range 'A' 'Z'; Gen.char_range 'a' 'z'; Gen.return '_' ])
+    (Gen.oneof_list
+       [ Gen.char_range 'A' 'Z'; Gen.char_range 'a' 'z'; Gen.return '_' ])
     (Gen.string_of
-       (Gen.oneof
+       (Gen.oneof_list
           [
             Gen.char_range 'A' 'Z';
             Gen.char_range 'a' 'z';
@@ -35,19 +32,14 @@ let gen_env_key =
 (* Values that never contain {{ so they don't introduce secondary substitutions *)
 let gen_plain_value = Gen.string_of (Gen.char_range 'a' 'z')
 
-(* Header names: printable, no colon, non-empty *)
+(* Lowercase letters only — never contains ':', satisfies non-empty when size >= 1 *)
 let gen_header_name =
-  Gen.such_that
-    (fun s -> s <> "" && not (String.contains s ':'))
-    (Gen.string_of Gen.printable)
+  Gen.string_size ~gen:(Gen.char_range 'a' 'z') (Gen.int_range 1 20)
 
-(* Header values: no newline (trimmed by parse_header) *)
+(* Printable ASCII range excludes '\n' and '\r', trim to match parse_header's trim *)
 let gen_header_value =
-  Gen.map String.trim
-    (Gen.string_of
-       (Gen.such_that (fun c -> c <> '\n' && c <> '\r') Gen.printable))
+  Gen.map String.trim (Gen.string_of (Gen.char_range ' ' '~'))
 
-(* Simple dummy request used as parse_curl_output's second argument *)
 let dummy_request : Ast.request =
   {
     name = None;
@@ -67,6 +59,8 @@ let test_named_method_roundtrip =
 let test_custom_method_preserves_string =
   Test.make ~name:"method_to_string (Custom s) = s" ~count:200
     gen_custom_method_string (fun s ->
+      (* skip strings that uppercase to a standard method name *)
+      assume (not (List.mem s standard_methods));
       Ast.method_to_string (Ast.Custom s) = s)
 
 let test_method_to_string_uppercase =
@@ -109,22 +103,17 @@ let test_url_without_scheme_strips =
   Test.make ~name:"url_without_scheme strips scheme:// prefix" ~count:300
     (Gen.map2
        (fun scheme rest -> (scheme, rest))
-       (Gen.oneofl [ "http"; "https"; "ftp"; "custom" ])
+       (Gen.oneof_list [ Gen.return "http"; Gen.return "https";
+                         Gen.return "ftp"; Gen.return "custom" ])
        (Gen.string_of (Gen.char_range 'a' 'z')))
     (fun (scheme, rest) ->
       let url = scheme ^ "://" ^ rest in
       String.equal (Buffer.url_without_scheme url) rest)
 
+(* [a-z] strings can never contain "://" so url_without_scheme is identity *)
 let test_url_without_scheme_identity =
   Test.make ~name:"url_without_scheme is identity when no :// present" ~count:300
-    (Gen.such_that
-       (fun s ->
-         not
-           (match String.index_opt s ':' with
-           | Some i ->
-               i + 2 < String.length s && s.[i + 1] = '/' && s.[i + 2] = '/'
-           | None -> false))
-       (Gen.string_of (Gen.char_range 'a' 'z')))
+    (Gen.string_of (Gen.char_range 'a' 'z'))
     (fun s -> String.equal (Buffer.url_without_scheme s) s)
 
 (* ── D: Response.parse_header roundtrip ─────────────────────────────────── *)
@@ -133,24 +122,22 @@ let test_parse_header_roundtrip =
   Test.make ~name:"parse_header roundtrip on key: value strings" ~count:500
     (Gen.pair gen_header_name gen_header_value)
     (fun (key, value) ->
-      (* parse_header trims the value but not the key *)
       let value = String.trim value in
       let line = key ^ ": " ^ value in
       match Response.parse_header line with
       | Some (k, v) -> String.equal k key && String.equal v value
       | None -> false)
 
+(* [a-z] strings never contain ':' so parse_header must return None *)
 let test_parse_header_none_without_colon =
   Test.make ~name:"parse_header returns None when line has no colon" ~count:300
-    (Gen.such_that
-       (fun s -> not (String.contains s ':'))
-       (Gen.string_of Gen.printable))
+    (Gen.string_of (Gen.char_range 'a' 'z'))
     (fun s -> Option.is_none (Response.parse_header s))
 
 (* ── E: Env.substitute identity and idempotence ─────────────────────────── *)
 
 let test_substitute_empty_env_identity =
-  Test.make ~name:"substitute empty_env is identity" ~count:500 Gen.string
+  Test.make ~name:"substitute empty env is identity" ~count:500 Gen.string
     (fun s ->
       (* Unknown {{vars}} are preserved as-is, so any string is unchanged *)
       String.equal (Env.substitute Env.empty s) s)
@@ -163,8 +150,6 @@ let test_substitute_idempotent =
       let env = Env.of_list [ (key, value) ] in
       let template = "{{" ^ key ^ "}}" in
       let once = Env.substitute env template in
-      (* After substituting, result is the plain value which has no {{ }},
-         so a second pass leaves it unchanged *)
       String.equal once (Env.substitute env once))
 
 (* ── F: Env.parse_line key=value ─────────────────────────────────────────── *)
@@ -174,7 +159,7 @@ let test_parse_line_roundtrip =
     (Gen.pair
        (Gen.string_size
           ~gen:
-            (Gen.oneof
+            (Gen.oneof_list
                [
                  Gen.char_range 'a' 'z';
                  Gen.char_range 'A' 'Z';
@@ -191,7 +176,6 @@ let test_parse_line_skips_comments =
   Test.make ~name:"parse_line leaves env unchanged for comment lines" ~count:200
     (Gen.pair gen_env_key gen_plain_value)
     (fun (key, value) ->
-      (* Verify a comment line that looks like "# key=newval" does not modify env *)
       let env = Env.of_list [ (key, value) ] in
       let after = Env.parse_line env ("# " ^ key ^ "=modified") in
       match Env.find after key with
@@ -200,10 +184,9 @@ let test_parse_line_skips_comments =
 
 let test_parse_line_skips_empty =
   Test.make ~name:"parse_line skips blank lines" ~count:50
-    (Gen.oneofl [ ""; "   "; "\t" ])
+    (Gen.oneof_list [ Gen.return ""; Gen.return "   "; Gen.return "\t" ])
     (fun line ->
       let env = Env.parse_line (Env.of_list [ ("k", "v") ]) line in
-      (* The pre-existing key must still be there *)
       match Env.find env "k" with Some "v" -> true | _ -> false)
 
 (* ── G: Response.detect_content_type case insensitivity ──────────────────── *)
@@ -219,17 +202,14 @@ let make_response headers : Ast.response =
   }
 
 let test_detect_json_case_insensitive =
-  Test.make ~name:"detect_content_type finds Json regardless of Content-Type casing"
+  Test.make ~name:"detect_content_type finds Json regardless of Content-Type value casing"
     ~count:200
     (Gen.map
        (fun bits ->
          let s = "application/json" in
          let n = List.length bits in
-         String.mapi
-           (fun i c ->
-             if List.nth bits (i mod n) then Char.uppercase_ascii c else c)
-           s)
-       (* list_size min=1 guarantees n >= 1 for safe mod *)
+         String.mapi (fun i c ->
+           if List.nth bits (i mod n) then Char.uppercase_ascii c else c) s)
        (Gen.list_size (Gen.int_range 1 20) Gen.bool))
     (fun ct_value ->
       let resp = make_response [ ("content-type", ct_value) ] in
@@ -238,13 +218,15 @@ let test_detect_json_case_insensitive =
 let test_detect_no_header_is_plain =
   Test.make ~name:"detect_content_type returns Plain when no Content-Type header"
     ~count:100
-    (Gen.list
-       (Gen.pair
-          (Gen.such_that
-             (fun s -> not (String.equal (String.lowercase_ascii s) "content-type"))
-             gen_header_name)
-          gen_header_value))
+    (Gen.list (Gen.pair gen_header_name gen_header_value))
     (fun headers ->
+      (* gen_header_name produces [a-z]+ which can never equal "content-type"...
+         except it actually can, so use assume to skip that case *)
+      assume
+        (List.for_all
+           (fun (name, _) ->
+             not (String.equal (String.lowercase_ascii name) "content-type"))
+           headers);
       let resp = make_response headers in
       Response.detect_content_type resp = Response.Plain)
 

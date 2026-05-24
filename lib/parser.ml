@@ -16,14 +16,14 @@ let make_error ?(line = 1) ?(snippet = "") message =
   Error { Ast.message; line; snippet }
 
 let split_blocks lines =
-  let rec loop blocks current = function
-    | [] -> List.rev (List.rev current :: blocks)
+  let rec loop blocks current current_start line_num = function
+    | [] -> List.rev ((current_start, List.rev current) :: blocks)
     | line :: rest when starts_with ~prefix:"###" (trim line) ->
-        loop (List.rev current :: blocks) [] rest
-    | line :: rest -> loop blocks (line :: current) rest
+        loop ((current_start, List.rev current) :: blocks) [] (line_num + 1) (line_num + 1) rest
+    | line :: rest -> loop blocks (line :: current) current_start (line_num + 1) rest
   in
-  loop [] [] lines
-  |> List.filter (fun block -> List.exists (fun line -> trim line <> "") block)
+  loop [] [] 0 0 lines
+  |> List.filter (fun (_, block) -> List.exists (fun line -> trim line <> "") block)
 
 let parse_name line =
   let trimmed = trim line in
@@ -115,10 +115,21 @@ let parse_block block =
 let parse_source source =
   let blocks = split_lines source |> split_blocks in
   let rec loop requests = function
-    | [] -> Ok { Ast.requests = List.rev requests; path = "" }
-    | block :: rest -> (
+    | [] -> Ok { Ast.requests = List.rev (List.map snd requests); path = "" }
+    | (start, block) :: rest -> (
         match parse_block block with
-        | Ok request -> loop (request :: requests) rest
+        | Ok request -> loop ((start, request) :: requests) rest
+        | Error error -> Error error)
+  in
+  loop [] blocks
+
+let parse_source_with_lines source =
+  let blocks = split_lines source |> split_blocks in
+  let rec loop acc = function
+    | [] -> Ok (List.rev acc)
+    | (start, block) :: rest -> (
+        match parse_block block with
+        | Ok request -> loop ((start, request) :: acc) rest
         | Error error -> Error error)
   in
   loop [] blocks
@@ -138,6 +149,16 @@ let parse_file path =
         | Error error -> Error error)
   with Sys_error message -> make_error message
 
-let request_at_cursor requests cursor_line =
-  ignore cursor_line;
-  match requests with [] -> None | request :: _ -> Some request
+let request_at_cursor source cursor_line =
+  match parse_source_with_lines source with
+  | Error _ -> None
+  | Ok [] -> None
+  | Ok pairs ->
+    (* Pick the last request whose block starts at or before the cursor *)
+    let result = List.fold_left (fun acc (start, req) ->
+      if start <= cursor_line then Some req else acc
+    ) None pairs in
+    (* Fall back to first request if cursor is before all blocks *)
+    (match result with
+     | Some _ -> result
+     | None -> Some (snd (List.hd pairs)))

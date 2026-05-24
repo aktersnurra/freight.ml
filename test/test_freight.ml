@@ -171,6 +171,67 @@ let test_parse_curl_output _ =
       assert_equal "{\"token\":\"abc\"}" response.body
   | Error message -> assert_failure message
 
+let test_parse_curl_output_uses_last_header_block _ =
+  let raw =
+    "HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 201 Created\r\nContent-Type: text/plain\r\n\r\ncreated\n201\n0.005"
+  in
+  match Freight.Response.parse_curl_output raw response_request with
+  | Ok response ->
+      assert_equal 201 response.status;
+      assert_equal "Created" response.status_text;
+      assert_equal [ ("Content-Type", "text/plain") ] response.headers;
+      assert_equal "created" response.body
+  | Error message -> assert_failure message
+
+let test_parse_curl_output_rejects_malformed_status_line _ =
+  let raw = "NOTHTTP 200 OK\r\n\r\nbody\n200\n0.001" in
+  match Freight.Response.parse_curl_output raw response_request with
+  | Ok _ -> assert_failure "expected malformed status line error"
+  | Error message -> assert_equal "missing HTTP status line" message
+
+let test_parse_curl_output_rejects_malformed_trailer _ =
+  let raw = "HTTP/1.1 200 OK\r\n\r\nbody\nnot-a-status\n0.001" in
+  match Freight.Response.parse_curl_output raw response_request with
+  | Ok _ -> assert_failure "expected malformed trailer error"
+  | Error message -> assert_equal "invalid curl status trailer" message
+
+let json_response body =
+  {
+    Freight.Ast.status = 200;
+    status_text = "OK";
+    headers = [ ("Content-Type", "application/json") ];
+    body;
+    duration_ms = 12;
+    request = response_request;
+  }
+
+let test_detect_content_type _ =
+  assert_equal Freight.Response.Json
+    (Freight.Response.detect_content_type (json_response "{}"));
+  assert_equal Freight.Response.Html
+    (Freight.Response.detect_content_type
+       { (json_response "<html></html>") with
+         headers = [ ("content-type", "text/html; charset=utf-8") ];
+       });
+  assert_equal Freight.Response.Plain
+    (Freight.Response.detect_content_type
+       { (json_response "hello") with headers = [] })
+
+let test_render_pretty_prints_json_response _ =
+  assert_equal
+    [
+      "HTTP 200 OK (12 ms)";
+      "Content-Type: application/json";
+      "";
+      "{\n  \"token\": \"abc\"\n}";
+    ]
+    (Freight.Response.render (json_response "{\"token\":\"abc\"}"))
+
+let test_render_falls_back_to_invalid_json_body _ =
+  assert_equal
+    [ "HTTP 200 OK (12 ms)"; "Content-Type: application/json"; ""; "not json" ]
+    (Freight.Response.render (json_response "not json"))
+
 let test_pretty_print_json _ =
   assert_equal "{\n  \"token\": \"abc\"\n}"
     (Freight.Response.pretty_print_body Freight.Response.Json "{\"token\":\"abc\"}")
@@ -193,6 +254,16 @@ let suite =
          "to_curl_file_body" >:: test_to_curl_file_body;
          "to_curl_put_file_body" >:: test_to_curl_put_file_body;
          "parse_curl_output" >:: test_parse_curl_output;
+         "parse_curl_output_uses_last_header_block"
+         >:: test_parse_curl_output_uses_last_header_block;
+         "parse_curl_output_rejects_malformed_status_line"
+         >:: test_parse_curl_output_rejects_malformed_status_line;
+         "parse_curl_output_rejects_malformed_trailer"
+         >:: test_parse_curl_output_rejects_malformed_trailer;
+         "detect_content_type" >:: test_detect_content_type;
+         "render_pretty_prints_json_response" >:: test_render_pretty_prints_json_response;
+         "render_falls_back_to_invalid_json_body"
+         >:: test_render_falls_back_to_invalid_json_body;
          "pretty_print_json" >:: test_pretty_print_json;
        ]
 

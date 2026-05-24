@@ -17,7 +17,9 @@ let join_lines lines = String.concat "\n" lines
 
 let parse_status_line line =
   match String.split_on_char ' ' line with
-  | http_version :: status :: rest when String.length http_version >= 5 -> (
+  | http_version :: status :: rest
+    when String.length http_version >= 5
+         && String.equal (String.sub http_version 0 5) "HTTP/" -> (
       match int_of_string_opt status with
       | Some status -> Ok (status, String.concat " " rest)
       | None -> Error "invalid HTTP status code")
@@ -38,6 +40,22 @@ let rec split_header_block acc = function
   | "" :: rest -> Ok (List.rev acc, rest)
   | line :: rest -> split_header_block (line :: acc) rest
 
+let starts_with_http line =
+  String.length line >= 5 && String.equal (String.sub line 0 5) "HTTP/"
+
+let rec split_response_header_block = function
+  | [] -> Error "missing HTTP status line"
+  | line :: _ as lines when starts_with_http line -> split_header_block [] lines
+  | _ :: rest -> split_response_header_block rest
+
+let rec last_response_header_block lines =
+  match split_response_header_block lines with
+  | Error message -> Error message
+  | Ok (header_lines, body_lines) -> (
+      match body_lines with
+      | next :: _ when starts_with_http next -> last_response_header_block body_lines
+      | _ -> Ok (header_lines, body_lines))
+
 let parse_curl_output raw request =
   let lines = split_lines raw in
   match List.rev lines with
@@ -45,7 +63,7 @@ let parse_curl_output raw request =
       match (int_of_string_opt status_code, float_of_string_opt time_total) with
       | Some status, Some seconds -> (
           let body_and_headers = List.rev body_and_headers_rev in
-          match split_header_block [] body_and_headers with
+          match last_response_header_block body_and_headers with
           | Error message -> Error message
           | Ok (header_lines, body_lines) -> (
               match header_lines with

@@ -114,22 +114,33 @@ let freight_run ~rpc state =
     let name = Freight.Buffer.buffer_name request in
     let%map loading_buf = Scratch.show_loading ~rpc ~name in
     don't_wait_for begin
-      match%bind Freight.Executor.run invocation with
-      | Error msg ->
-        Scratch.update ~rpc loading_buf ~filetype:"text"
-          ~lines:[ "Error: " ^ msg ]
-      | Ok raw ->
-        match Freight.Response.parse_curl_output raw request with
-        | Error msg ->
-          Scratch.update ~rpc loading_buf ~filetype:"text"
-            ~lines:[ "Parse error: " ^ msg ]
-        | Ok response ->
-          let filetype =
-            Freight.Buffer.filetype_of_content_type
-              (Freight.Response.detect_content_type response)
-          in
-          let req_name = Option.value request.Freight.Ast.name ~default:"" in
-          state.State.env <- Freight.Chaining.inject ~name:req_name response state.State.env;
-          Scratch.update ~rpc loading_buf ~filetype
-            ~lines:(Freight.Response.render response)
+      match%bind
+        Monitor.try_with (fun () ->
+          match%bind Freight.Executor.run invocation with
+          | Error msg ->
+            Scratch.update ~rpc loading_buf ~filetype:"text"
+              ~lines:[ "Error: " ^ msg ]
+          | Ok raw ->
+            match Freight.Response.parse_curl_output raw request with
+            | Error msg ->
+              Scratch.update ~rpc loading_buf ~filetype:"text"
+                ~lines:[ "Parse error: " ^ msg ]
+            | Ok response ->
+              let filetype =
+                Freight.Buffer.filetype_of_content_type
+                  (Freight.Response.detect_content_type response)
+              in
+              let req_name = Option.value request.Freight.Ast.name ~default:"" in
+              state.State.env <- Freight.Chaining.inject ~name:req_name response state.State.env;
+              Scratch.update ~rpc loading_buf ~filetype
+                ~lines:(Freight.Response.render response))
+      with
+      | Ok () -> return ()
+      | Error exn ->
+        (match%map
+           Monitor.try_with (fun () ->
+             Scratch.update ~rpc loading_buf ~filetype:"text"
+               ~lines:[ "Internal error: " ^ Exn.to_string exn ])
+         with
+         | Ok () | Error _ -> ())
     end

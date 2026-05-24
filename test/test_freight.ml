@@ -183,6 +183,12 @@ let test_parse_curl_output_uses_last_header_block _ =
       assert_equal "created" response.body
   | Error message -> assert_failure message
 
+let test_parse_curl_output_keeps_body_starting_with_http _ =
+  let raw = "HTTP/1.1 200 OK\r\n\r\nHTTP/1.1 is text, not headers\n200\n0.001" in
+  match Freight.Response.parse_curl_output raw response_request with
+  | Ok response -> assert_equal "HTTP/1.1 is text, not headers" response.body
+  | Error message -> assert_failure message
+
 let test_parse_curl_output_rejects_malformed_status_line _ =
   let raw = "NOTHTTP 200 OK\r\n\r\nbody\n200\n0.001" in
   match Freight.Response.parse_curl_output raw response_request with
@@ -223,7 +229,7 @@ let test_render_pretty_prints_json_response _ =
       "HTTP 200 OK (12 ms)";
       "Content-Type: application/json";
       "";
-      "{\n  \"token\": \"abc\"\n}";
+      "{ \"token\": \"abc\" }";
     ]
     (Freight.Response.render (json_response "{\"token\":\"abc\"}"))
 
@@ -233,7 +239,7 @@ let test_render_falls_back_to_invalid_json_body _ =
     (Freight.Response.render (json_response "not json"))
 
 let test_pretty_print_json _ =
-  assert_equal "{\n  \"token\": \"abc\"\n}"
+  assert_equal "{ \"token\": \"abc\" }"
     (Freight.Response.pretty_print_body Freight.Response.Json "{\"token\":\"abc\"}")
 
 let suite =
@@ -256,6 +262,8 @@ let suite =
          "parse_curl_output" >:: test_parse_curl_output;
          "parse_curl_output_uses_last_header_block"
          >:: test_parse_curl_output_uses_last_header_block;
+         "parse_curl_output_keeps_body_starting_with_http"
+         >:: test_parse_curl_output_keeps_body_starting_with_http;
          "parse_curl_output_rejects_malformed_status_line"
          >:: test_parse_curl_output_rejects_malformed_status_line;
          "parse_curl_output_rejects_malformed_trailer"

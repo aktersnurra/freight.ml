@@ -48,12 +48,21 @@ let rec split_response_header_block = function
   | line :: _ as lines when starts_with_http line -> split_header_block [] lines
   | _ :: rest -> split_response_header_block rest
 
+let is_response_header_block lines =
+  match split_response_header_block lines with
+  | Error _ -> false
+  | Ok (status_line :: header_lines, _) ->
+      Result.is_ok (parse_status_line status_line)
+      && List.for_all (fun line -> Option.is_some (parse_header line)) header_lines
+  | Ok ([], _) -> false
+
 let rec last_response_header_block lines =
   match split_response_header_block lines with
   | Error message -> Error message
   | Ok (header_lines, body_lines) -> (
       match body_lines with
-      | next :: _ when starts_with_http next -> last_response_header_block body_lines
+      | next :: _ when starts_with_http next && is_response_header_block body_lines ->
+          last_response_header_block body_lines
       | _ -> Ok (header_lines, body_lines))
 
 let parse_curl_output raw request =
@@ -117,30 +126,11 @@ let detect_content_type response =
   | Some value when contains value "text/plain" -> Plain
   | Some value -> Other value
 
-let rec pretty_json indent json =
-  let spaces count = String.make count ' ' in
-  match json with
-  | `Assoc fields ->
-      let child_indent = indent + 2 in
-      let field_to_string (name, value) =
-        Printf.sprintf "%s%s: %s" (spaces child_indent)
-          (Yojson.Safe.to_string (`String name))
-          (pretty_json child_indent value)
-      in
-      "{\n" ^ String.concat ",\n" (List.map field_to_string fields) ^ "\n"
-      ^ spaces indent ^ "}"
-  | `List values ->
-      let child_indent = indent + 2 in
-      let value_to_string value = spaces child_indent ^ pretty_json child_indent value in
-      "[\n" ^ String.concat ",\n" (List.map value_to_string values) ^ "\n"
-      ^ spaces indent ^ "]"
-  | value -> Yojson.Safe.to_string value
-
 let pretty_print_body content_type body =
   match content_type with
   | Json -> (
       match Yojson.Safe.from_string body with
-      | json -> pretty_json 0 json
+      | json -> Yojson.Safe.pretty_to_string json
       | exception Yojson.Json_error _ -> body)
   | _ -> body
 

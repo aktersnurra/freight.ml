@@ -67,16 +67,12 @@ let freight_env ~rpc state arg =
   Scratch.show ~rpc ~name:"freight://env" ~filetype:"text"
     ~lines:(Request_view.render_env ~active_env:env_name ~pairs ~unresolved)
 
-let freight_inspect ~rpc state =
-  let%bind buf, lines, cursor_line = get_current_buf_lines rpc in
-  let source = String.concat lines ~sep:"\n" in
+let resolve_request ~rpc state source cursor_line buf =
   match Freight.Parser.request_at_cursor source cursor_line with
   | None ->
     (match Freight.Parser.parse_string source with
-     | Error err ->
-       Scratch.show ~rpc ~name:"freight://error" ~filetype:"text"
-         ~lines:(Request_view.render_parse_error err)
-     | Ok _ -> show_error ~rpc "No requests found in buffer.")
+     | Error err -> return (Error (`Parse err))
+     | Ok _ -> return (Error `No_request))
   | Some request ->
     let%bind dir_opt = get_buf_path rpc buf in
     let env =
@@ -92,6 +88,17 @@ let freight_inspect ~rpc state =
             (k, Freight.Env.substitute env v))
       }
     in
+    return (Ok (Freight.Ast.apply_host_header request))
+
+let freight_inspect ~rpc state =
+  let%bind buf, lines, cursor_line = get_current_buf_lines rpc in
+  let source = String.concat lines ~sep:"\n" in
+  match%bind resolve_request ~rpc state source cursor_line buf with
+  | Error (`Parse err) ->
+    Scratch.show ~rpc ~name:"freight://error" ~filetype:"text"
+      ~lines:(Request_view.render_parse_error err)
+  | Error `No_request -> show_error ~rpc "No requests found in buffer."
+  | Ok request ->
     let invocation = Freight.Executor.to_curl request in
     Scratch.show ~rpc ~name:"freight://inspect" ~filetype:"text"
       ~lines:(Request_view.render_request request invocation)
@@ -99,28 +106,12 @@ let freight_inspect ~rpc state =
 let freight_run ~rpc state =
   let%bind buf, lines, cursor_line = get_current_buf_lines rpc in
   let source = String.concat lines ~sep:"\n" in
-  match Freight.Parser.request_at_cursor source cursor_line with
-  | None ->
-    (match Freight.Parser.parse_string source with
-     | Error err ->
-       Scratch.show ~rpc ~name:"freight://error" ~filetype:"text"
-         ~lines:(Request_view.render_parse_error err)
-     | Ok _ -> show_error ~rpc "No requests found in buffer.")
-  | Some request ->
-    let%bind dir_opt = get_buf_path rpc buf in
-    let env =
-      match dir_opt with
-      | Some dir -> Freight.Env.load ~dir ~active_env:state.State.active_env
-      | None -> state.State.env
-    in
-    let request =
-      { request with
-        Freight.Ast.url = Freight.Env.substitute env request.Freight.Ast.url
-      ; headers =
-          List.map request.Freight.Ast.headers ~f:(fun (k, v) ->
-            (k, Freight.Env.substitute env v))
-      }
-    in
+  match%bind resolve_request ~rpc state source cursor_line buf with
+  | Error (`Parse err) ->
+    Scratch.show ~rpc ~name:"freight://error" ~filetype:"text"
+      ~lines:(Request_view.render_parse_error err)
+  | Error `No_request -> show_error ~rpc "No requests found in buffer."
+  | Ok request ->
     let invocation = Freight.Executor.to_curl request in
     let name = Freight.Buffer.buffer_name request in
     let%map loading_buf = Scratch.show_loading ~rpc ~name in

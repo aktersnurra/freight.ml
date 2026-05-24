@@ -14,6 +14,9 @@ jobs:
         with:
           ocaml-compiler: "5.2"
 
+      - name: Pin vcaml to OCaml 5-compatible version
+        run: opam pin add vcaml 0.17.0 --no-action --yes
+
       - name: Install dependencies
         run: opam install . --deps-only --with-test --yes
 

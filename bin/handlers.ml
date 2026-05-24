@@ -12,10 +12,9 @@ let show_error ~rpc message =
 
 let get_current_buf_lines rpc =
   let%bind buf = nvim_call rpc "nvim_get_current_buf" [] in
-  let handle = match buf with Msgpck.Int n -> n | _ -> failwith "expected buf handle" in
   let%bind lines_msg =
     nvim_call rpc "nvim_buf_get_lines"
-      [ Msgpck.Int handle; Msgpck.Int 0; Msgpck.Int (-1); Msgpck.Bool false ]
+      [ buf; Msgpck.Int 0; Msgpck.Int (-1); Msgpck.Bool false ]
   in
   let lines =
     match lines_msg with
@@ -23,10 +22,10 @@ let get_current_buf_lines rpc =
       List.filter_map xs ~f:(function Msgpck.String s -> Some s | _ -> None)
     | _ -> []
   in
-  return (handle, lines)
+  return (buf, lines)
 
-let get_buf_path rpc handle =
-  match%map nvim_call rpc "nvim_buf_get_name" [ Msgpck.Int handle ] with
+let get_buf_path rpc buf =
+  match%map nvim_call rpc "nvim_buf_get_name" [ buf ] with
   | Msgpck.String s when not (String.is_empty s) -> Some (Filename.dirname s)
   | _ -> None
 
@@ -42,8 +41,7 @@ let freight_env ~rpc state arg =
   in
   State.set_active_env state env_name;
   let%bind buf = nvim_call rpc "nvim_get_current_buf" [] in
-  let handle = match buf with Msgpck.Int n -> n | _ -> failwith "expected buf handle" in
-  let%bind dir_opt = get_buf_path rpc handle in
+  let%bind dir_opt = get_buf_path rpc buf in
   (match dir_opt with
    | Some dir -> state.State.env <- Freight.Env.load ~dir ~active_env:env_name
    | None -> ());
@@ -58,7 +56,7 @@ let freight_inspect ~rpc _state =
        ~body:[ "No freight_curl_cmd metadata on current buffer." ])
 
 let freight_run ~rpc state =
-  let%bind handle, lines = get_current_buf_lines rpc in
+  let%bind buf, lines = get_current_buf_lines rpc in
   let source = String.concat lines ~sep:"\n" in
   match Freight.Parser.parse_string source with
   | Error err ->
@@ -68,7 +66,7 @@ let freight_run ~rpc state =
     (match Freight.Parser.request_at_cursor file.Freight.Ast.requests 0 with
      | None -> show_error ~rpc "No requests found in buffer."
      | Some request ->
-       let%bind dir_opt = get_buf_path rpc handle in
+       let%bind dir_opt = get_buf_path rpc buf in
        let env =
          match dir_opt with
          | Some dir -> Freight.Env.load ~dir ~active_env:state.State.active_env

@@ -25,14 +25,15 @@ let parse_msg msg =
     `Reply (msgid, err, result)
   | _ -> `Unknown
 
-let start_reader reader pending incoming_w =
+let start_reader reader pending incoming_w : unit Deferred.t =
   let buf = ref "" in
   let rec loop () =
     let tmp = Bytes.create 65536 in
     match%bind Reader.read reader tmp with
     | `Eof -> return ()
     | `Ok n ->
-      buf := !buf ^ String.sub (Bytes.to_string tmp) ~pos:0 ~len:n;
+      let chunk = String.sub (Bytes.to_string tmp) ~pos:0 ~len:n in
+      buf := !buf ^ chunk;
       drain ()
   and drain () =
     if String.length !buf > 0 then
@@ -51,7 +52,8 @@ let start_reader reader pending incoming_w =
               let value = match err with
                 | Msgpck.Nil -> Ok result
                 | Msgpck.String s -> Error s
-                | _ -> Error "rpc error"
+                | Msgpck.List [ _; Msgpck.String s ] -> Error s
+                | other -> Error (Msgpck.show other)
               in
               Ivar.fill_exn ivar value);
            drain ()
@@ -65,7 +67,7 @@ let start_reader reader pending incoming_w =
     else
       loop ()
   in
-  don't_wait_for (loop ())
+  loop ()
 
 let create () =
   let pending = Hashtbl.create (module Int) in
@@ -75,8 +77,8 @@ let create () =
     next_msgid = 1;
     pending;
   } in
-  start_reader (Lazy.force Reader.stdin) pending incoming_w;
-  (t, incoming_r)
+  let reader_done = start_reader (Lazy.force Reader.stdin) pending incoming_w in
+  (t, incoming_r, reader_done)
 
 let read incoming_r =
   match%map Pipe.read incoming_r with

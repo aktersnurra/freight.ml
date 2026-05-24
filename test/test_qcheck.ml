@@ -18,10 +18,10 @@ let gen_custom_method_string =
 let gen_env_key =
   Gen.map2
     (fun first rest -> String.make 1 first ^ rest)
-    (Gen.oneof_list
+    (Gen.oneof
        [ Gen.char_range 'A' 'Z'; Gen.char_range 'a' 'z'; Gen.return '_' ])
     (Gen.string_of
-       (Gen.oneof_list
+       (Gen.oneof
           [
             Gen.char_range 'A' 'Z';
             Gen.char_range 'a' 'z';
@@ -103,8 +103,7 @@ let test_url_without_scheme_strips =
   Test.make ~name:"url_without_scheme strips scheme:// prefix" ~count:300
     (Gen.map2
        (fun scheme rest -> (scheme, rest))
-       (Gen.oneof_list [ Gen.return "http"; Gen.return "https";
-                         Gen.return "ftp"; Gen.return "custom" ])
+       (Gen.oneof_list [ "http"; "https"; "ftp"; "custom" ])
        (Gen.string_of (Gen.char_range 'a' 'z')))
     (fun (scheme, rest) ->
       let url = scheme ^ "://" ^ rest in
@@ -159,7 +158,7 @@ let test_parse_line_roundtrip =
     (Gen.pair
        (Gen.string_size
           ~gen:
-            (Gen.oneof_list
+            (Gen.oneof
                [
                  Gen.char_range 'a' 'z';
                  Gen.char_range 'A' 'Z';
@@ -184,7 +183,7 @@ let test_parse_line_skips_comments =
 
 let test_parse_line_skips_empty =
   Test.make ~name:"parse_line skips blank lines" ~count:50
-    (Gen.oneof_list [ Gen.return ""; Gen.return "   "; Gen.return "\t" ])
+    (Gen.oneof_list [ ""; "   "; "\t" ])
     (fun line ->
       let env = Env.parse_line (Env.of_list [ ("k", "v") ]) line in
       match Env.find env "k" with Some "v" -> true | _ -> false)

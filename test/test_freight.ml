@@ -110,6 +110,46 @@ let test_env_load_precedence _ =
       assert_equal (Some "dev") (Freight.Env.find env "active");
       assert_equal (Some "root") (Freight.Env.find env "local"))
 
+let sample_request body =
+  {
+    Freight.Ast.name = Some "login";
+    method_ = Freight.Ast.Post;
+    url = "https://api.example.com/auth";
+    headers = [ ("Content-Type", "application/json") ];
+    body;
+  }
+
+let test_to_curl_inline_body _ =
+  let invocation =
+    Freight.Executor.to_curl (sample_request (Freight.Ast.Body_inline "{}"))
+  in
+  assert_bool "has -i" (List.mem "-i" invocation.args);
+  assert_bool "has -s" (List.mem "-s" invocation.args);
+  assert_bool "has method" (List.mem "POST" invocation.args);
+  assert_bool "has header" (List.mem "Content-Type: application/json" invocation.args);
+  assert_bool "has data flag" (List.mem "--data-binary" invocation.args);
+  assert_bool "has body" (List.mem "{}" invocation.args)
+
+let test_to_curl_file_body _ =
+  let invocation =
+    Freight.Executor.to_curl (sample_request (Freight.Ast.Body_file "payload.json"))
+  in
+  assert_bool "has file upload" (List.mem "@payload.json" invocation.args)
+
+let test_to_curl_put_file_body _ =
+  let request =
+    {
+      Freight.Ast.name = Some "upload";
+      method_ = Freight.Ast.Put;
+      url = "https://api.example.com/upload";
+      headers = [];
+      body = Freight.Ast.Body_file "payload.json";
+    }
+  in
+  let invocation = Freight.Executor.to_curl request in
+  assert_bool "has transfer flag" (List.mem "-T" invocation.args);
+  assert_bool "has transfer path" (List.mem "payload.json" invocation.args)
+
 let suite =
   "freight"
   >::: [
@@ -124,6 +164,9 @@ let suite =
          "env_substitute_unknown_preserved"
          >:: test_env_substitute_unknown_preserved;
          "env_load_precedence" >:: test_env_load_precedence;
+         "to_curl_inline_body" >:: test_to_curl_inline_body;
+         "to_curl_file_body" >:: test_to_curl_file_body;
+         "to_curl_put_file_body" >:: test_to_curl_put_file_body;
        ]
 
 let () = run_test_tt_main suite

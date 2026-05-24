@@ -146,7 +146,7 @@ let render response =
   status_line :: header_lines @ [ ""; body ]
 
 let render_body response =
-  let body = pretty_print_body (detect_content_type response) response.Ast.body in
+  let body = pretty_print_body (detect_content_type response) response.body in
   [ body ]
 
 let render_headers response =

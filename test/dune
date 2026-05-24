@@ -1,3 +1,7 @@
 (test
  (name test_freight)
  (libraries freight ounit2 unix))
+
+(test
+ (name test_qcheck)
+ (libraries freight qcheck-core qcheck-core.runner))

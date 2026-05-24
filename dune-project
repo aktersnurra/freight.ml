@@ -28,7 +28,9 @@
   vcaml
   async
   core
-  (ounit2 :with-test))
+  (ounit2 :with-test)
+  (qcheck-core :with-test))
+
  (tags
   (neovim http ocaml)))
 

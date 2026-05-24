@@ -16,6 +16,9 @@ depends: [
   "angstrom"
   "yojson"
   "re"
+  "vcaml"
+  "async"
+  "core"
   "ounit2" {with-test}
   "odoc" {with-doc}
 ]

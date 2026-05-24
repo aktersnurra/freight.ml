@@ -1,4 +1,5 @@
 (executable
  (public_name freight)
  (name main)
- (libraries freight))
+ (modules main state scratch handlers request_view)
+ (libraries freight vcaml async core))

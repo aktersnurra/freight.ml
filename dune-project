@@ -25,6 +25,9 @@
   angstrom
   yojson
   re
+  vcaml
+  async
+  core
   (ounit2 :with-test))
  (tags
   (neovim http ocaml)))

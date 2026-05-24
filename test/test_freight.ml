@@ -268,6 +268,29 @@ let test_inject_named_response _ =
   assert_equal (Some "req-1")
     (Freight.Env.find env "login.response.headers.X-Request-Id")
 
+let test_named_buffer_name _ =
+  assert_equal "freight://response/login" (Freight.Buffer.buffer_name response_request)
+
+let test_slugged_buffer_name _ =
+  let request =
+    {
+      response_request with
+      name = None;
+      method_ = Freight.Ast.Post;
+      url = "https://api.example.com/data";
+    }
+  in
+  assert_equal "freight://response/post-api-example-com-data"
+    (Freight.Buffer.buffer_name request)
+
+let test_filetype_mapping _ =
+  assert_equal "json" (Freight.Buffer.filetype_of_content_type Freight.Response.Json);
+  assert_equal "xml" (Freight.Buffer.filetype_of_content_type Freight.Response.Xml);
+  assert_equal "html" (Freight.Buffer.filetype_of_content_type Freight.Response.Html);
+  assert_equal "text" (Freight.Buffer.filetype_of_content_type Freight.Response.Plain);
+  assert_equal "text"
+    (Freight.Buffer.filetype_of_content_type (Freight.Response.Other "application/pdf"))
+
 let suite =
   "freight"
   >::: [
@@ -302,6 +325,9 @@ let suite =
          "extract_body_path" >:: test_extract_body_path;
          "extract_header" >:: test_extract_header;
          "inject_named_response" >:: test_inject_named_response;
+         "named_buffer_name" >:: test_named_buffer_name;
+         "slugged_buffer_name" >:: test_slugged_buffer_name;
+         "filetype_mapping" >:: test_filetype_mapping;
        ]
 
 let () = run_test_tt_main suite

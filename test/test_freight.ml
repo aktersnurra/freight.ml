@@ -67,15 +67,26 @@ let test_parse_crlf_and_trailing_whitespace _ =
 
 let write_file path data =
   let channel = open_out path in
-  Fun.protect
-    ~finally:(fun () -> close_out channel)
-    (fun () -> output_string channel data)
+  match output_string channel data with
+  | () -> close_out channel
+  | exception exn ->
+      close_out_noerr channel;
+      raise exn
 
 let make_temp_dir () =
   let path = Filename.temp_file "freight-env-" "" in
   Sys.remove path;
   Unix.mkdir path 0o700;
   path
+
+let rec remove_tree path =
+  if Sys.file_exists path then
+    if Sys.is_directory path then begin
+      Sys.readdir path
+      |> Array.iter (fun name -> remove_tree (Filename.concat path name));
+      Unix.rmdir path
+    end
+    else Sys.remove path
 
 let test_env_substitute_unknown_preserved _ =
   let env = Freight.Env.of_list [ ("host", "https://api.example.com") ] in
@@ -84,17 +95,20 @@ let test_env_substitute_unknown_preserved _ =
 
 let test_env_load_precedence _ =
   let root = make_temp_dir () in
-  let child = Filename.concat root "child" in
-  Unix.mkdir child 0o700;
-  write_file (Filename.concat root ".env") "base=root\nshared=root\n";
-  write_file (Filename.concat root ".env.dev") "shared=dev\nactive=dev\n";
-  write_file (Filename.concat root ".env.local") "shared=local\nlocal=root\n";
-  write_file (Filename.concat child ".env") "base=child\n";
-  let env = Freight.Env.load ~dir:child ~active_env:(Some "dev") in
-  assert_equal (Some "child") (Freight.Env.find env "base");
-  assert_equal (Some "local") (Freight.Env.find env "shared");
-  assert_equal (Some "dev") (Freight.Env.find env "active");
-  assert_equal (Some "root") (Freight.Env.find env "local")
+  Fun.protect
+    ~finally:(fun () -> remove_tree root)
+    (fun () ->
+      let child = Filename.concat root "child" in
+      Unix.mkdir child 0o700;
+      write_file (Filename.concat root ".env") "base=root\nshared=root\n";
+      write_file (Filename.concat root ".env.dev") "shared=dev\nactive=dev\n";
+      write_file (Filename.concat root ".env.local") "shared=local\nlocal=root\n";
+      write_file (Filename.concat child ".env") "base=child\n";
+      let env = Freight.Env.load ~dir:child ~active_env:(Some "dev") in
+      assert_equal (Some "child") (Freight.Env.find env "base");
+      assert_equal (Some "local") (Freight.Env.find env "shared");
+      assert_equal (Some "dev") (Freight.Env.find env "active");
+      assert_equal (Some "root") (Freight.Env.find env "local"))
 
 let suite =
   "freight"

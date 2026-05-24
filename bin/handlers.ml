@@ -51,10 +51,21 @@ let freight_env ~rpc state arg =
   (match dir_opt with
    | Some dir -> state.State.env <- Freight.Env.load ~dir ~active_env:env_name
    | None -> ());
-  let label = match env_name with Some n -> n | None -> "(none)" in
-  Scratch.show ~rpc ~name:"freight://info" ~filetype:"text"
-    ~lines:(Request_view.render_message ~title:"Env"
-       ~body:[ Printf.sprintf "Active env: %s" label ])
+  let%bind lines_msg =
+    nvim_call rpc "nvim_buf_get_lines"
+      [ buf; Msgpck.Int 0; Msgpck.Int (-1); Msgpck.Bool false ]
+  in
+  let source =
+    match lines_msg with
+    | Msgpck.List xs ->
+      List.filter_map xs ~f:(function Msgpck.String s -> Some s | _ -> None)
+      |> String.concat ~sep:"\n"
+    | _ -> ""
+  in
+  let pairs = Freight.Env.to_list state.State.env in
+  let unresolved = Freight.Env.unresolved state.State.env source in
+  Scratch.show ~rpc ~name:"freight://env" ~filetype:"text"
+    ~lines:(Request_view.render_env ~active_env:env_name ~pairs ~unresolved)
 
 let freight_inspect ~rpc state =
   let%bind buf, lines, cursor_line = get_current_buf_lines rpc in

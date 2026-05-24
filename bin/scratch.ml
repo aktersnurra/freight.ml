@@ -2,7 +2,7 @@ open Core
 open Async
 
 let nvim_call rpc method_ params =
-  match%map Rpc.call rpc method_ params with
+  match%map Nvim_rpc.call rpc method_ params with
   | Ok result -> result
   | Error e -> failwithf "nvim call %s failed: %s" method_ e ()
 

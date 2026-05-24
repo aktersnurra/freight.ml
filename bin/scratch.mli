@@ -1,5 +1,5 @@
 val show
-  :  rpc:Rpc.t
+  :  rpc:Nvim_rpc.t
   -> name:string
   -> filetype:string
   -> lines:string list

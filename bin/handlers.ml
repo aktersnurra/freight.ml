@@ -2,13 +2,13 @@ open Core
 open Async
 
 let nvim_call rpc method_ params =
-  match%map Rpc.call rpc method_ params with
+  match%map Nvim_rpc.call rpc method_ params with
   | Ok result -> result
   | Error e -> failwithf "nvim %s: %s" method_ e ()
 
 let show_error ~rpc message =
   Scratch.show ~rpc ~name:"freight://error" ~filetype:"text"
-    (Request_view.render_message ~title:"Error" ~body:[ message ])
+    ~lines:(Request_view.render_message ~title:"Error" ~body:[ message ])
 
 let get_current_buf_lines rpc =
   let%bind buf = nvim_call rpc "nvim_get_current_buf" [] in
@@ -32,7 +32,7 @@ let get_buf_path rpc handle =
 
 let freight_open ~rpc _state =
   Scratch.show ~rpc ~name:"freight://request" ~filetype:"http"
-    [ "# @name my_request"; "GET https://example.com"; "" ]
+    ~lines:[ "# @name my_request"; "GET https://example.com"; "" ]
 
 let freight_env ~rpc state arg =
   let env_name =
@@ -49,12 +49,12 @@ let freight_env ~rpc state arg =
    | None -> ());
   let label = match env_name with Some n -> n | None -> "(none)" in
   Scratch.show ~rpc ~name:"freight://info" ~filetype:"text"
-    (Request_view.render_message ~title:"Env"
+    ~lines:(Request_view.render_message ~title:"Env"
        ~body:[ Printf.sprintf "Active env: %s" label ])
 
 let freight_inspect ~rpc _state =
   Scratch.show ~rpc ~name:"freight://info" ~filetype:"text"
-    (Request_view.render_message ~title:"Inspect"
+    ~lines:(Request_view.render_message ~title:"Inspect"
        ~body:[ "No freight_curl_cmd metadata on current buffer." ])
 
 let freight_run ~rpc state =
@@ -63,7 +63,7 @@ let freight_run ~rpc state =
   match Freight.Parser.parse_string source with
   | Error err ->
     Scratch.show ~rpc ~name:"freight://error" ~filetype:"text"
-      (Request_view.render_parse_error err)
+      ~lines:(Request_view.render_parse_error err)
   | Ok file ->
     (match Freight.Parser.request_at_cursor file.Freight.Ast.requests 0 with
      | None -> show_error ~rpc "No requests found in buffer."
@@ -84,4 +84,4 @@ let freight_run ~rpc state =
        in
        let invocation = Freight.Executor.to_curl request in
        Scratch.show ~rpc ~name:"freight://inspect" ~filetype:"text"
-         (Request_view.render_request request invocation))
+         ~lines:(Request_view.render_request request invocation))

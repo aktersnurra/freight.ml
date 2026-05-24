@@ -1,6 +1,7 @@
 (executable
  (public_name freight)
  (name main)
- (modules main rpc state scratch handlers request_view)
- (libraries freight msgpck async core core_unix.command_unix)
+ (modules main nvim_rpc state scratch handlers request_view)
+ (libraries freight msgpck async core)
+ (preprocess (pps ppx_jane))
  (flags (:standard -w @A-4-33-40-41-42-43-34-44)))

@@ -20,6 +20,7 @@ depends: [
   "async"
   "core"
   "ounit2" {with-test}
+  "qcheck-core" {with-test}
   "odoc" {with-doc}
 ]
 build: [

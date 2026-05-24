@@ -59,7 +59,7 @@ let load ~dir ~active_env =
            env names)
        empty
 
-let variable = Re.Perl.compile_pat "\\{\\{[ \\t]*([A-Za-z_][A-Za-z0-9_]*)[ \\t]*\\}\\}"
+let variable = Re.Perl.compile_pat "\\{\\{[ \\t]*([A-Za-z_][A-Za-z0-9_.-]*)[ \\t]*\\}\\}"
 
 let substitute env source =
   Re.replace variable source ~f:(fun group ->

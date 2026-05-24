@@ -93,6 +93,19 @@ let test_env_substitute_unknown_preserved _ =
   assert_equal "GET https://api.example.com/{{ missing }}"
     (Freight.Env.substitute env "GET {{ host }}/{{ missing }}")
 
+let test_env_substitute_chaining_keys _ =
+  let env =
+    Freight.Env.of_list
+      [
+        ("login.response.body.token", "abc");
+        ("login.response.headers.X-Request-Id", "req-1");
+      ]
+  in
+  assert_equal "Bearer abc"
+    (Freight.Env.substitute env "Bearer {{ login.response.body.token }}");
+  assert_equal "Request req-1"
+    (Freight.Env.substitute env "Request {{login.response.headers.X-Request-Id}}")
+
 let test_env_load_precedence _ =
   let root = make_temp_dir () in
   Fun.protect
@@ -304,6 +317,7 @@ let suite =
          >:: test_parse_crlf_and_trailing_whitespace;
          "env_substitute_unknown_preserved"
          >:: test_env_substitute_unknown_preserved;
+         "env_substitute_chaining_keys" >:: test_env_substitute_chaining_keys;
          "env_load_precedence" >:: test_env_load_precedence;
          "to_curl_inline_body" >:: test_to_curl_inline_body;
          "to_curl_file_body" >:: test_to_curl_file_body;

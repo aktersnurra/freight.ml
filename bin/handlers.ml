@@ -111,5 +111,11 @@ let freight_run ~rpc state =
       }
     in
     let invocation = Freight.Executor.to_curl request in
-    Scratch.show ~rpc ~name:"freight://inspect" ~filetype:"text"
-      ~lines:(Request_view.render_request request invocation)
+    (match%bind Freight.Executor.run invocation with
+     | Error msg -> show_error ~rpc (Printf.sprintf "curl failed: %s" msg)
+     | Ok raw ->
+       match Freight.Response.parse_curl_output raw request with
+       | Error msg -> show_error ~rpc (Printf.sprintf "parse error: %s" msg)
+       | Ok response ->
+         Scratch.show ~rpc ~name:"freight://response" ~filetype:"text"
+           ~lines:(Freight.Response.render response))

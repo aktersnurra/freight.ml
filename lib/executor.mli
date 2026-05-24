@@ -4,3 +4,4 @@ type curl_invocation = {
 }
 
 val to_curl : Ast.request -> curl_invocation
+val run : curl_invocation -> (string, string) result Async.Deferred.t

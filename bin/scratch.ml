@@ -17,6 +17,8 @@ let show ~rpc ~name ~filetype ~lines =
     | Msgpck.Ext (_, s) -> ext_to_int s
     | _ -> failwith "expected buffer handle"
   in
+  let%bind _ = nvim_call rpc "nvim_command"
+    [ Msgpck.String (Printf.sprintf "silent! bwipeout %s" name) ] in
   let%bind _ = nvim_call rpc "nvim_buf_set_name" [ buf; Msgpck.String name ] in
   let%bind _ = nvim_call rpc "nvim_buf_set_option" [ buf; Msgpck.String "buftype"; Msgpck.String "nofile" ] in
   let%bind _ = nvim_call rpc "nvim_buf_set_option" [ buf; Msgpck.String "filetype"; Msgpck.String filetype ] in

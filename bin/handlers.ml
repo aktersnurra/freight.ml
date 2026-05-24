@@ -1,120 +1,87 @@
 open Core
 open Async
-open Vcaml
 
-let freight_open ~client _state =
-  let open Deferred.Or_error.Let_syntax in
-  Scratch.show
-    ~client
-    ~name:"freight://request"
-    ~filetype:"http"
-    ~lines:[ "GET https://example.com"; "" ]
-;;
+let nvim_call rpc method_ params =
+  match%map Rpc.call rpc method_ params with
+  | Ok result -> result
+  | Error e -> failwithf "nvim %s: %s" method_ e ()
 
-let freight_env ~client state active_env =
-  let open Deferred.Or_error.Let_syntax in
-  State.set_active_env state active_env;
-  let%bind buf = Nvim.get_current_buf [%here] client in
-  let%bind buf_name =
-    Buffer.get_name [%here] client (Buffer.Or_current.Id buf)
-  in
-  let dir_opt =
-    if String.equal buf_name "" then None
-    else
-      let d = Filename.dirname buf_name in
-      if String.equal d "" then None else Some d
+let show_error ~rpc message =
+  Scratch.show ~rpc ~name:"freight://error" ~filetype:"text"
+    (Request_view.render_message ~title:"Error" ~body:[ message ])
+
+let get_current_buf_lines rpc =
+  let%bind buf = nvim_call rpc "nvim_get_current_buf" [] in
+  let handle = match buf with Msgpck.Int n -> n | _ -> failwith "expected buf handle" in
+  let%bind lines_msg =
+    nvim_call rpc "nvim_buf_get_lines"
+      [ Msgpck.Int handle; Msgpck.Int 0; Msgpck.Int (-1); Msgpck.Bool false ]
   in
   let lines =
-    match dir_opt with
-    | None ->
-      state.State.active_env <- active_env;
-      Request_view.render_message
-        ~title:"Freight Env"
-        ~body:
-          [ (match active_env with
-             | None -> "Active env: (none)"
-             | Some e -> Printf.sprintf "Active env: %s" e)
-          ; "Env files not loaded: no file in current buffer."
-          ]
-    | Some dir ->
-      let env = Freight.Env.load ~dir ~active_env in
-      state.State.env <- env;
-      Request_view.render_message
-        ~title:"Freight Env"
-        ~body:
-          [ (match active_env with
-             | None -> "Active env: (none)"
-             | Some e -> Printf.sprintf "Active env: %s" e)
-          ; Printf.sprintf "Loaded env from: %s" dir
-          ]
+    match lines_msg with
+    | Msgpck.List xs ->
+      List.filter_map xs ~f:(function Msgpck.String s -> Some s | _ -> None)
+    | _ -> []
   in
-  Scratch.show ~client ~name:"freight://inspect" ~filetype:"" ~lines
-;;
+  return (handle, lines)
 
-let freight_inspect ~client _state =
-  let open Deferred.Or_error.Let_syntax in
-  let lines =
-    Request_view.render_message
-      ~title:"Freight Inspect"
-      ~body:[ "No freight_curl_cmd metadata on current buffer yet." ]
-  in
-  Scratch.show ~client ~name:"freight://inspect" ~filetype:"" ~lines
-;;
+let get_buf_path rpc handle =
+  match%map nvim_call rpc "nvim_buf_get_name" [ Msgpck.Int handle ] with
+  | Msgpck.String s when not (String.is_empty s) -> Some (Filename.dirname s)
+  | _ -> None
 
-let freight_run ~client state =
-  let open Deferred.Or_error.Let_syntax in
-  let%bind result =
-    Buffer.get_lines
-      [%here]
-      client
-      Buffer.Or_current.Current
-      ~start:0
-      ~end_:(-1)
-      ~strict_indexing:false
+let freight_open ~rpc _state =
+  Scratch.show ~rpc ~name:"freight://request" ~filetype:"http"
+    [ "# @name my_request"; "GET https://example.com"; "" ]
+
+let freight_env ~rpc state arg =
+  let env_name =
+    match arg with
+    | Some s when not (String.is_empty s) -> Some s
+    | _ -> None
   in
-  let lines = Buffer.With_changedtick.value result in
-  let content = String.concat ~sep:"\n" (List.map lines ~f:(fun s -> (s :> string))) in
-  match Freight.Parser.parse_string content with
+  State.set_active_env state env_name;
+  let%bind buf = nvim_call rpc "nvim_get_current_buf" [] in
+  let handle = match buf with Msgpck.Int n -> n | _ -> failwith "expected buf handle" in
+  let%bind dir_opt = get_buf_path rpc handle in
+  (match dir_opt with
+   | Some dir -> state.State.env <- Freight.Env.load ~dir ~active_env:env_name
+   | None -> ());
+  let label = match env_name with Some n -> n | None -> "(none)" in
+  Scratch.show ~rpc ~name:"freight://info" ~filetype:"text"
+    (Request_view.render_message ~title:"Env"
+       ~body:[ Printf.sprintf "Active env: %s" label ])
+
+let freight_inspect ~rpc _state =
+  Scratch.show ~rpc ~name:"freight://info" ~filetype:"text"
+    (Request_view.render_message ~title:"Inspect"
+       ~body:[ "No freight_curl_cmd metadata on current buffer." ])
+
+let freight_run ~rpc state =
+  let%bind handle, lines = get_current_buf_lines rpc in
+  let source = String.concat lines ~sep:"\n" in
+  match Freight.Parser.parse_string source with
   | Error err ->
-    Scratch.show
-      ~client
-      ~name:"freight://error"
-      ~filetype:""
-      ~lines:(Request_view.render_parse_error err)
+    Scratch.show ~rpc ~name:"freight://error" ~filetype:"text"
+      (Request_view.render_parse_error err)
   | Ok file ->
-    let%bind win = Nvim.get_current_win [%here] client in
-    let%bind pos = Window.get_cursor [%here] client (Window.Or_current.Id win) in
-    let cursor_line = pos.row in
-    (match Freight.Parser.request_at_cursor file.requests cursor_line with
-     | None ->
-       Scratch.show
-         ~client
-         ~name:"freight://error"
-         ~filetype:""
-         ~lines:
-           (Request_view.render_message
-              ~title:"Freight Error"
-              ~body:[ "No request at cursor" ])
-     | Some req ->
-       let url = Freight.Env.substitute state.State.env req.url in
-       let headers =
-         List.map req.headers ~f:(fun (k, v) ->
-           Freight.Env.substitute state.State.env k,
-           Freight.Env.substitute state.State.env v)
+    (match Freight.Parser.request_at_cursor file.Freight.Ast.requests 0 with
+     | None -> show_error ~rpc "No requests found in buffer."
+     | Some request ->
+       let%bind dir_opt = get_buf_path rpc handle in
+       let env =
+         match dir_opt with
+         | Some dir -> Freight.Env.load ~dir ~active_env:state.State.active_env
+         | None -> state.State.env
        in
-       let body =
-         match req.body with
-         | Freight.Ast.Body_inline s ->
-           Freight.Ast.Body_inline (Freight.Env.substitute state.State.env s)
-         | Freight.Ast.Body_file f ->
-           Freight.Ast.Body_file (Freight.Env.substitute state.State.env f)
-         | Freight.Ast.Body_none -> Freight.Ast.Body_none
+       let request =
+         { request with
+           Freight.Ast.url = Freight.Env.substitute env request.Freight.Ast.url
+         ; headers =
+             List.map request.Freight.Ast.headers ~f:(fun (k, v) ->
+               (k, Freight.Env.substitute env v))
+         }
        in
-       let req' = { req with url; headers; body } in
-       let inv = Freight.Executor.to_curl req' in
-       Scratch.show
-         ~client
-         ~name:"freight://inspect"
-         ~filetype:""
-         ~lines:(Request_view.render_request req' inv))
-;;
+       let invocation = Freight.Executor.to_curl request in
+       Scratch.show ~rpc ~name:"freight://inspect" ~filetype:"text"
+         (Request_view.render_request request invocation))

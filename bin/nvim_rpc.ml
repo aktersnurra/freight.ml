@@ -6,20 +6,10 @@ type incoming =
   | Notification of { method_ : string; params : Msgpck.t list }
 
 type t = {
-  reader : Reader.t;
   writer : Writer.t;
   mutable next_msgid : int;
-  mutable buf : string;
   pending : (int, (Msgpck.t, string) result Ivar.t) Hashtbl.t;
 }
-
-let create () =
-  { reader = Lazy.force Reader.stdin
-  ; writer = Lazy.force Writer.stdout
-  ; next_msgid = 1
-  ; buf = ""
-  ; pending = Hashtbl.create (module Int)
-  }
 
 let write_msg t msg =
   let bytes = Msgpck.String.to_string msg in
@@ -35,45 +25,61 @@ let parse_msg msg =
     `Reply (msgid, err, result)
   | _ -> `Unknown
 
-let read t =
+let start_reader reader pending incoming_w =
+  let buf = ref "" in
   let rec loop () =
-    (* Try to parse from buffer first *)
-    if String.length t.buf > 0 then begin
-      match (try Some (Msgpck.String.read t.buf) with _ -> None) with
+    let tmp = Bytes.create 65536 in
+    match%bind Reader.read reader tmp with
+    | `Eof -> return ()
+    | `Ok n ->
+      buf := !buf ^ String.sub (Bytes.to_string tmp) ~pos:0 ~len:n;
+      drain ()
+  and drain () =
+    if String.length !buf > 0 then
+      match (try Some (Msgpck.String.read !buf) with _ -> None) with
+      | None -> loop ()
       | Some (consumed, msg) ->
-        t.buf <- String.sub t.buf ~pos:consumed ~len:(String.length t.buf - consumed);
+        buf := String.sub !buf ~pos:consumed ~len:(String.length !buf - consumed);
         (match parse_msg msg with
          | `Reply (msgid, err, result) ->
-           (match Hashtbl.find t.pending msgid with
-            | None -> loop ()
+           (match Hashtbl.find pending msgid with
+            | None -> ()
             | Some ivar ->
-              Hashtbl.remove t.pending msgid;
+              Hashtbl.remove pending msgid;
               let value = match err with
                 | Msgpck.Nil -> Ok result
                 | Msgpck.String s -> Error s
                 | _ -> Error "rpc error"
               in
-              Ivar.fill_exn ivar value;
-              loop ())
+              Ivar.fill_exn ivar value);
+           drain ()
          | `Request (msgid, method_, params) ->
-           return (Request { msgid; method_; params })
+           Pipe.write_without_pushback incoming_w (Request { msgid; method_; params });
+           drain ()
          | `Notification (method_, params) ->
-           return (Notification { method_; params })
-         | `Unknown -> loop ())
-      | None ->
-        (* Need more data *)
-        read_more t
-    end else
-      read_more t
-  and read_more t =
-    let tmp = Bytes.create 65536 in
-    match%bind Reader.read t.reader tmp with
-    | `Eof -> failwith "stdin EOF"
-    | `Ok n ->
-      t.buf <- t.buf ^ String.sub (Bytes.to_string tmp) ~pos:0 ~len:n;
+           Pipe.write_without_pushback incoming_w (Notification { method_; params });
+           drain ()
+         | `Unknown -> drain ())
+    else
       loop ()
   in
-  loop ()
+  don't_wait_for (loop ())
+
+let create () =
+  let pending = Hashtbl.create (module Int) in
+  let incoming_r, incoming_w = Pipe.create () in
+  let t = {
+    writer = Lazy.force Writer.stdout;
+    next_msgid = 1;
+    pending;
+  } in
+  start_reader (Lazy.force Reader.stdin) pending incoming_w;
+  (t, incoming_r)
+
+let read incoming_r =
+  match%map Pipe.read incoming_r with
+  | `Ok msg -> msg
+  | `Eof -> failwith "incoming pipe closed"
 
 let reply_ok t ~msgid result =
   write_msg t (Msgpck.List [ Int 1; Int msgid; Nil; result ])

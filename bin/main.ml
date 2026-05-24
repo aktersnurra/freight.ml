@@ -42,26 +42,26 @@ let dispatch rpc state method_ params =
   | _ ->
     return Msgpck.Nil
 
-let rec loop rpc state =
-  match%bind Nvim_rpc.read rpc with
+let rec loop rpc incoming state =
+  match%bind Nvim_rpc.read incoming with
   | Nvim_rpc.Request { msgid; method_; params } ->
     let%bind result = dispatch rpc state method_ params in
     Nvim_rpc.reply_ok rpc ~msgid result;
-    loop rpc state
+    loop rpc incoming state
   | Nvim_rpc.Notification _ ->
-    loop rpc state
+    loop rpc incoming state
 
 let main () =
-  let rpc = Nvim_rpc.create () in
+  let rpc, incoming = Nvim_rpc.create () in
   let state = State.create () in
   let%bind channel =
-    match%map Nvim_rpc.read rpc with
+    match%map Nvim_rpc.read incoming with
     | Nvim_rpc.Notification { params = Msgpck.Int ch :: _; _ } -> ch
     | Nvim_rpc.Request { params = Msgpck.Int ch :: _; _ } -> ch
     | _ -> failwith "unexpected first message from neovim"
   in
   let%bind () = register_commands rpc channel in
-  loop rpc state
+  loop rpc incoming state
 
 let () =
   don't_wait_for (main ());

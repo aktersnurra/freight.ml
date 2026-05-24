@@ -80,12 +80,16 @@ let resolve_request ~rpc state source cursor_line buf =
       | Some dir -> Freight.Env.load ~dir ~active_env:state.State.active_env
       | None -> state.State.env
     in
+    let sub = Freight.Env.substitute env in
+    let body = match request.Freight.Ast.body with
+      | Freight.Ast.Body_inline s -> Freight.Ast.Body_inline (sub s)
+      | other -> other
+    in
     let request =
       { request with
-        Freight.Ast.url = Freight.Env.substitute env request.Freight.Ast.url
-      ; headers =
-          List.map request.Freight.Ast.headers ~f:(fun (k, v) ->
-            (k, Freight.Env.substitute env v))
+        Freight.Ast.url = sub request.Freight.Ast.url
+      ; headers = List.map request.Freight.Ast.headers ~f:(fun (k, v) -> (k, sub v))
+      ; body
       }
     in
     return (Ok (Freight.Ast.apply_host_header request))

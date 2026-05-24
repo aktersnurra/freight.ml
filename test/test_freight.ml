@@ -123,6 +123,17 @@ let test_env_load_precedence _ =
       assert_equal (Some "dev") (Freight.Env.find env "active");
       assert_equal (Some "root") (Freight.Env.find env "local"))
 
+let test_env_to_list _ =
+  let env = Freight.Env.of_list [ ("b", "2"); ("a", "1"); ("c", "3") ] in
+  let pairs = Freight.Env.to_list env in
+  assert_equal [ ("a", "1"); ("b", "2"); ("c", "3") ] pairs
+
+let test_env_unresolved _ =
+  let env = Freight.Env.of_list [ ("host", "https://api.example.com") ] in
+  let source = "GET {{host}}/users\nAuthorization: Bearer {{token}}\nX-Id: {{request_id}}" in
+  let missing = Freight.Env.unresolved env source in
+  assert_equal [ "request_id"; "token" ] missing
+
 let sample_request body =
   {
     Freight.Ast.name = Some "login";
@@ -317,6 +328,8 @@ let suite =
          >:: test_parse_crlf_and_trailing_whitespace;
          "env_substitute_unknown_preserved"
          >:: test_env_substitute_unknown_preserved;
+         "env_to_list" >:: test_env_to_list;
+         "env_unresolved" >:: test_env_unresolved;
          "env_substitute_chaining_keys" >:: test_env_substitute_chaining_keys;
          "env_load_precedence" >:: test_env_load_precedence;
          "to_curl_inline_body" >:: test_to_curl_inline_body;

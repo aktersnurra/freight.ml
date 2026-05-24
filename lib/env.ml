@@ -65,3 +65,17 @@ let substitute env source =
   Re.replace variable source ~f:(fun group ->
       let key = Re.Group.get group 1 in
       match find env key with Some data -> data | None -> Re.Group.get group 0)
+
+let to_list env = String_map.bindings env
+
+let unresolved env source =
+  let seen = Hashtbl.create 8 in
+  Re.all variable source
+  |> List.filter_map (fun group ->
+      let key = Re.Group.get group 1 in
+      match find env key with
+      | Some _ -> None
+      | None ->
+        if Hashtbl.mem seen key then None
+        else begin Hashtbl.add seen key (); Some key end)
+  |> List.sort String.compare

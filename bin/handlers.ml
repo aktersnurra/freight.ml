@@ -138,8 +138,25 @@ let freight_run ~rpc state =
               in
               let req_name = Option.value request.Freight.Ast.name ~default:"" in
               state.State.env <- Freight.Chaining.inject ~name:req_name response state.State.env;
-              Scratch.update ~rpc loading_buf ~filetype
-                ~lines:(Freight.Response.render response))
+              state.State.last_response <- Some response;
+              state.State.response_buf_name <- Some name;
+              let%bind () = Scratch.update ~rpc loading_buf ~filetype
+                ~lines:(Freight.Response.render response) in
+              let set_keymap key view =
+                let%map _ = nvim_call rpc "nvim_buf_set_keymap"
+                  [ loading_buf
+                  ; Msgpck.String "n"
+                  ; Msgpck.String key
+                  ; Msgpck.String (Printf.sprintf ":FreightView %s<CR>" view)
+                  ; Msgpck.Map
+                      [ (Msgpck.String "noremap", Msgpck.Bool true)
+                      ; (Msgpck.String "silent", Msgpck.Bool true) ]
+                  ]
+                in ()
+              in
+              let%bind () = set_keymap "B" "Body" in
+              let%bind () = set_keymap "H" "Headers" in
+              set_keymap "A" "All")
       with
       | Ok () -> return ()
       | Error exn ->
@@ -150,3 +167,30 @@ let freight_run ~rpc state =
          with
          | Ok () | Error _ -> ())
     end
+
+let freight_view ~rpc state view_name =
+  match state.State.last_response with
+  | None -> show_error ~rpc "No response to view."
+  | Some response ->
+    match state.State.response_buf_name with
+    | None -> show_error ~rpc "No response buffer."
+    | Some buf_name ->
+      let lines, filetype =
+        match view_name with
+        | "Body" ->
+          let ct = Freight.Response.detect_content_type response in
+          let ft = Freight.Buffer.filetype_of_content_type ct in
+          (Freight.Response.render_body response, ft)
+        | "Headers" ->
+          (Freight.Response.render_headers response, "text")
+        | _ ->
+          let ct = Freight.Response.detect_content_type response in
+          let ft = Freight.Buffer.filetype_of_content_type ct in
+          (Freight.Response.render_all response, ft)
+      in
+      (match%bind nvim_call rpc "nvim_eval"
+        [ Msgpck.String (Printf.sprintf "bufnr('%s')" buf_name) ] with
+      | Msgpck.Int n when n >= 0 ->
+        let buf = Msgpck.Int n in
+        Scratch.update ~rpc buf ~filetype ~lines
+      | _ -> show_error ~rpc "Response buffer not found.")

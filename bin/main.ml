@@ -6,10 +6,12 @@ let register_commands rpc channel =
     let nargs_str = match nargs with
       | `None -> ""
       | `Optional -> " -nargs=?"
+      | `Required -> " -nargs=1"
     in
     let call_str = match nargs with
       | `None -> Printf.sprintf "call rpcrequest(%d, '%s')" channel rpc_method
       | `Optional -> Printf.sprintf "call rpcrequest(%d, '%s', <q-args>)" channel rpc_method
+      | `Required -> Printf.sprintf "call rpcrequest(%d, '%s', <q-args>)" channel rpc_method
     in
     let cmd_str = Printf.sprintf "command!%s %s %s" nargs_str name call_str in
     match%map Nvim_rpc.call rpc "nvim_command" [ Msgpck.String cmd_str ] with
@@ -20,6 +22,7 @@ let register_commands rpc channel =
   let%bind () = cmd "FreightRun"     `None     "FreightRun"     in
   let%bind () = cmd "FreightEnv"     `Optional "FreightEnv"     in
   let%bind () = cmd "FreightInspect" `None     "FreightInspect" in
+  let%bind () = cmd "FreightView"    `Required "FreightView"    in
   return ()
 
 let dispatch rpc state method_ params =
@@ -39,6 +42,13 @@ let dispatch rpc state method_ params =
     Msgpck.Nil
   | "FreightInspect" ->
     let%map () = Handlers.freight_inspect ~rpc state in
+    Msgpck.Nil
+  | "FreightView" ->
+    let view_name = match params with
+      | Msgpck.String s :: _ -> s
+      | _ -> "All"
+    in
+    let%map () = Handlers.freight_view ~rpc state view_name in
     Msgpck.Nil
   | _ ->
     return Msgpck.Nil

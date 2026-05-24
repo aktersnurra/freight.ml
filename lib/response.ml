@@ -144,3 +144,19 @@ let render response =
   in
   let body = pretty_print_body (detect_content_type response) response.body in
   status_line :: header_lines @ [ ""; body ]
+
+let render_body response =
+  let body = pretty_print_body (detect_content_type response) response.Ast.body in
+  [ body ]
+
+let render_headers response =
+  let status_line =
+    Printf.sprintf "HTTP %d %s (%d ms)" response.Ast.status response.status_text
+      response.duration_ms
+  in
+  let header_lines =
+    List.map (fun (name, value) -> Printf.sprintf "%s: %s" name value) response.headers
+  in
+  status_line :: header_lines
+
+let render_all response = render response

@@ -262,6 +262,67 @@ let test_render_falls_back_to_invalid_json_body _ =
     [ "HTTP 200 OK (12 ms)"; "Content-Type: application/json"; ""; "not json" ]
     (Freight.Response.render (json_response "not json"))
 
+let test_render_body _ =
+  let request = {
+    Freight.Ast.name = None;
+    method_ = Freight.Ast.Get;
+    url = "https://httpbin.org/get";
+    headers = [];
+    body = Freight.Ast.Body_none;
+  } in
+  let response = {
+    Freight.Ast.status = 200;
+    status_text = "OK";
+    headers = [ ("content-type", "application/json") ];
+    body = {|{"id":1}|};
+    duration_ms = 42;
+    request;
+  } in
+  let lines = Freight.Response.render_body response in
+  assert_equal [ "{ \"id\": 1 }" ] lines
+
+let test_render_headers _ =
+  let request = {
+    Freight.Ast.name = None;
+    method_ = Freight.Ast.Get;
+    url = "https://httpbin.org/get";
+    headers = [];
+    body = Freight.Ast.Body_none;
+  } in
+  let response = {
+    Freight.Ast.status = 200;
+    status_text = "OK";
+    headers = [ ("content-type", "application/json"); ("x-foo", "bar") ];
+    body = {|{"id":1}|};
+    duration_ms = 100;
+    request;
+  } in
+  let lines = Freight.Response.render_headers response in
+  assert_equal
+    [ "HTTP 200 OK (100 ms)"; "content-type: application/json"; "x-foo: bar" ]
+    lines
+
+let test_render_all _ =
+  let request = {
+    Freight.Ast.name = None;
+    method_ = Freight.Ast.Get;
+    url = "https://httpbin.org/get";
+    headers = [];
+    body = Freight.Ast.Body_none;
+  } in
+  let response = {
+    Freight.Ast.status = 200;
+    status_text = "OK";
+    headers = [ ("content-type", "application/json") ];
+    body = {|{"id":1}|};
+    duration_ms = 42;
+    request;
+  } in
+  let lines = Freight.Response.render_all response in
+  assert_equal
+    (Freight.Response.render response)
+    lines
+
 let test_pretty_print_json _ =
   assert_equal "{ \"token\": \"abc\" }"
     (Freight.Response.pretty_print_body Freight.Response.Json "{\"token\":\"abc\"}")
@@ -413,6 +474,9 @@ let suite =
          "render_pretty_prints_json_response" >:: test_render_pretty_prints_json_response;
          "render_falls_back_to_invalid_json_body"
          >:: test_render_falls_back_to_invalid_json_body;
+         "render_body" >:: test_render_body;
+         "render_headers" >:: test_render_headers;
+         "render_all" >:: test_render_all;
          "pretty_print_json" >:: test_pretty_print_json;
          "extract_body_path" >:: test_extract_body_path;
          "extract_header" >:: test_extract_header;

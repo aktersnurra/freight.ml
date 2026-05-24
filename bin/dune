@@ -1,7 +1,6 @@
 (executable
  (public_name freight)
  (name main)
- (modules main state scratch handlers request_view)
- (libraries freight vcaml vcaml.plugin async core core_unix.command_unix)
- (preprocess
-  (pps ppx_jane)))
+ (modules main rpc state scratch handlers request_view)
+ (libraries freight msgpck async core core_unix.command_unix)
+ (flags (:standard -w @A-4-33-40-41-42-43-34-44)))

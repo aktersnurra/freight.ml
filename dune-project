@@ -25,7 +25,7 @@
   angstrom
   yojson
   re
-  vcaml
+  msgpck
   async
   core
   (ounit2 :with-test)

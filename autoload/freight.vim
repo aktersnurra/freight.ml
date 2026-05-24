@@ -9,6 +9,12 @@ function! s:resolve_executable() abort
   return s:plugin_root . '/_build/default/bin/main.exe'
 endfunction
 
+function! s:on_stderr(job_id, data, event) abort
+  echohl ErrorMsg
+  echom 'freight stderr: ' . join(a:data, "\n")
+  echohl None
+endfunction
+
 function! freight#start() abort
   if s:job_id > 0
     echo 'freight: already running (channel ' . s:job_id . ')'
@@ -21,7 +27,7 @@ function! freight#start() abort
     echohl None
     return
   endif
-  let s:job_id = jobstart([l:exe], {'rpc': v:true})
+  let s:job_id = jobstart([l:exe], {'rpc': v:true, 'on_stderr': function('s:on_stderr')})
   if s:job_id <= 0
     echohl ErrorMsg
     echom 'freight: jobstart failed (' . s:job_id . ')'

@@ -7,5 +7,6 @@ command! FreightStart call freight#start()
 
 augroup freight_autostart
   autocmd!
+  autocmd VimEnter * call freight#ensure_started()
   autocmd BufRead,BufNewFile *.http,*.rest call freight#ensure_started()
 augroup END

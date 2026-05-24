@@ -1,0 +1,17 @@
+# @name get_example
+GET https://httpbin.org/get
+
+###
+
+# @name post_json
+POST https://httpbin.org/post
+Content-Type: application/json
+
+{"message": "hello from freight"}
+
+###
+
+# @name get_with_header
+GET https://httpbin.org/headers
+Accept: application/json
+X-Custom-Header: freight-test

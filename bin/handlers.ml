@@ -111,18 +111,25 @@ let freight_run ~rpc state =
       }
     in
     let invocation = Freight.Executor.to_curl request in
-    (match%bind Freight.Executor.run invocation with
-     | Error msg -> show_error ~rpc (Printf.sprintf "curl failed: %s" msg)
-     | Ok raw ->
-       match Freight.Response.parse_curl_output raw request with
-       | Error msg -> show_error ~rpc (Printf.sprintf "parse error: %s" msg)
-       | Ok response ->
-         let name = Freight.Buffer.buffer_name request in
-         let filetype =
-           Freight.Buffer.filetype_of_content_type
-             (Freight.Response.detect_content_type response)
-         in
-         let req_name = Option.value request.Freight.Ast.name ~default:"" in
-         state.State.env <- Freight.Chaining.inject ~name:req_name response state.State.env;
-         Scratch.show ~rpc ~name ~filetype
-           ~lines:(Freight.Response.render response))
+    let name = Freight.Buffer.buffer_name request in
+    let%map loading_buf = Scratch.show_loading ~rpc ~name in
+    don't_wait_for begin
+      match%bind Freight.Executor.run invocation with
+      | Error msg ->
+        Scratch.update ~rpc loading_buf ~filetype:"text"
+          ~lines:[ "Error: " ^ msg ]
+      | Ok raw ->
+        match Freight.Response.parse_curl_output raw request with
+        | Error msg ->
+          Scratch.update ~rpc loading_buf ~filetype:"text"
+            ~lines:[ "Parse error: " ^ msg ]
+        | Ok response ->
+          let filetype =
+            Freight.Buffer.filetype_of_content_type
+              (Freight.Response.detect_content_type response)
+          in
+          let req_name = Option.value request.Freight.Ast.name ~default:"" in
+          state.State.env <- Freight.Chaining.inject ~name:req_name response state.State.env;
+          Scratch.update ~rpc loading_buf ~filetype
+            ~lines:(Freight.Response.render response)
+    end

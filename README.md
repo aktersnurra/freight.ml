@@ -1,6 +1,6 @@
 # freight.ml
 
-![freight logo](logo.png)
+![freight logo](assets/freight-logo.png)
 
 A Neovim HTTP client plugin written in OCaml. Parses JetBrains-style `.http` files, substitutes environment variables, builds and executes `curl` invocations, and renders responses in scratch buffers — all driven by a persistent VCaml process communicating with Neovim over msgpack RPC.
 

@@ -42,6 +42,8 @@ let start_reader reader pending incoming_w =
         buf := String.sub !buf ~pos:consumed ~len:(String.length !buf - consumed);
         (match parse_msg msg with
          | `Reply (msgid, err, result) ->
+           (* Yield so the sender can register the pending ivar before we try to fill it *)
+           let%bind () = Scheduler.yield () in
            (match Hashtbl.find pending msgid with
             | None -> ()
             | Some ivar ->

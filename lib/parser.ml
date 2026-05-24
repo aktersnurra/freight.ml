@@ -65,12 +65,16 @@ let parse_header line =
   | Ok ("", _) | Error _ -> None
   | Ok header -> Some header
 
+let rec drop_while p = function
+  | x :: rest when p x -> drop_while p rest
+  | xs -> xs
+
 let parse_body lines =
   let body_lines =
     lines
-    |> List.drop_while (fun line -> trim line = "")
+    |> drop_while (fun line -> trim line = "")
     |> List.rev
-    |> List.drop_while (fun line -> trim line = "")
+    |> drop_while (fun line -> trim line = "")
     |> List.rev
   in
   match body_lines with

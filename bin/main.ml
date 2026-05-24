@@ -1,1 +1,1 @@
-let () = print_endline "Hello, World!"
+let () = print_endline "freight.ml core library installed"

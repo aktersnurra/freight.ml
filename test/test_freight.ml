@@ -150,6 +150,31 @@ let test_to_curl_put_file_body _ =
   assert_bool "has transfer flag" (List.mem "-T" invocation.args);
   assert_bool "has transfer path" (List.mem "payload.json" invocation.args)
 
+let response_request =
+  {
+    Freight.Ast.name = Some "login";
+    method_ = Freight.Ast.Get;
+    url = "https://api.example.com";
+    headers = [];
+    body = Freight.Ast.Body_none;
+  }
+
+let test_parse_curl_output _ =
+  let raw =
+    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"token\":\"abc\"}\n200\n0.142"
+  in
+  match Freight.Response.parse_curl_output raw response_request with
+  | Ok response ->
+      assert_equal 200 response.status;
+      assert_equal "OK" response.status_text;
+      assert_equal 142 response.duration_ms;
+      assert_equal "{\"token\":\"abc\"}" response.body
+  | Error message -> assert_failure message
+
+let test_pretty_print_json _ =
+  assert_equal "{\n  \"token\": \"abc\"\n}"
+    (Freight.Response.pretty_print_body Freight.Response.Json "{\"token\":\"abc\"}")
+
 let suite =
   "freight"
   >::: [
@@ -167,6 +192,8 @@ let suite =
          "to_curl_inline_body" >:: test_to_curl_inline_body;
          "to_curl_file_body" >:: test_to_curl_file_body;
          "to_curl_put_file_body" >:: test_to_curl_put_file_body;
+         "parse_curl_output" >:: test_parse_curl_output;
+         "pretty_print_json" >:: test_pretty_print_json;
        ]
 
 let () = run_test_tt_main suite

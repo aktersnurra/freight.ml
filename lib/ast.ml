@@ -67,3 +67,21 @@ let method_of_string method_ =
   | "TRACE" -> Trace
   | "CONNECT" -> Connect
   | custom -> Custom custom
+
+let apply_host_header request =
+  if not (String.length request.url > 0 && request.url.[0] = '/') then request
+  else
+    match
+      List.partition
+        (fun (k, _) -> String.equal (String.lowercase_ascii k) "host")
+        request.headers
+    with
+    | [], _ -> request
+    | (_, host_value) :: _, rest_headers ->
+      let host = String.trim host_value in
+      let base =
+        if String.length host > 0 && host.[String.length host - 1] = '/' then
+          String.sub host 0 (String.length host - 1)
+        else host
+      in
+      { request with url = base ^ request.url; headers = rest_headers }

@@ -45,3 +45,7 @@ type http_file = {
 
 val method_to_string : method_ -> string
 val method_of_string : string -> method_
+val apply_host_header : request -> request
+(** If [request.url] is a relative path (starts with [/]) and a [Host] header
+    is present, prepends the host value to the url and removes the [Host]
+    header. Returns the request unchanged otherwise. *)

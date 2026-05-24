@@ -315,11 +315,76 @@ let test_filetype_mapping _ =
   assert_equal "text"
     (Freight.Buffer.filetype_of_content_type (Freight.Response.Other "application/pdf"))
 
+let test_apply_host_header_relative_url _ =
+  let request = {
+    Freight.Ast.name = None;
+    method_ = Freight.Ast.Post;
+    url = "/post";
+    headers = [ ("Host", "https://httpbin.org"); ("Content-Type", "application/json") ];
+    body = Freight.Ast.Body_none;
+  } in
+  let result = Freight.Ast.apply_host_header request in
+  assert_equal "https://httpbin.org/post" result.Freight.Ast.url;
+  assert_equal [ ("Content-Type", "application/json") ] result.Freight.Ast.headers
+
+let test_apply_host_header_trailing_slash _ =
+  let request = {
+    Freight.Ast.name = None;
+    method_ = Freight.Ast.Get;
+    url = "/users";
+    headers = [ ("Host", "https://api.example.com/") ];
+    body = Freight.Ast.Body_none;
+  } in
+  let result = Freight.Ast.apply_host_header request in
+  assert_equal "https://api.example.com/users" result.Freight.Ast.url;
+  assert_equal [] result.Freight.Ast.headers
+
+let test_apply_host_header_absolute_url_unchanged _ =
+  let request = {
+    Freight.Ast.name = None;
+    method_ = Freight.Ast.Get;
+    url = "https://httpbin.org/get";
+    headers = [ ("Host", "https://other.example.com") ];
+    body = Freight.Ast.Body_none;
+  } in
+  let result = Freight.Ast.apply_host_header request in
+  assert_equal "https://httpbin.org/get" result.Freight.Ast.url;
+  assert_equal [ ("Host", "https://other.example.com") ] result.Freight.Ast.headers
+
+let test_apply_host_header_no_host_unchanged _ =
+  let request = {
+    Freight.Ast.name = None;
+    method_ = Freight.Ast.Get;
+    url = "/users";
+    headers = [ ("Content-Type", "application/json") ];
+    body = Freight.Ast.Body_none;
+  } in
+  let result = Freight.Ast.apply_host_header request in
+  assert_equal "/users" result.Freight.Ast.url;
+  assert_equal [ ("Content-Type", "application/json") ] result.Freight.Ast.headers
+
+let test_apply_host_header_case_insensitive _ =
+  let request = {
+    Freight.Ast.name = None;
+    method_ = Freight.Ast.Get;
+    url = "/ping";
+    headers = [ ("HOST", "https://api.example.com") ];
+    body = Freight.Ast.Body_none;
+  } in
+  let result = Freight.Ast.apply_host_header request in
+  assert_equal "https://api.example.com/ping" result.Freight.Ast.url;
+  assert_equal [] result.Freight.Ast.headers
+
 let suite =
   "freight"
   >::: [
          "method_to_string" >:: test_method_to_string;
          "method_of_string" >:: test_method_of_string;
+         "apply_host_header_relative_url" >:: test_apply_host_header_relative_url;
+         "apply_host_header_trailing_slash" >:: test_apply_host_header_trailing_slash;
+         "apply_host_header_absolute_url_unchanged" >:: test_apply_host_header_absolute_url_unchanged;
+         "apply_host_header_no_host_unchanged" >:: test_apply_host_header_no_host_unchanged;
+         "apply_host_header_case_insensitive" >:: test_apply_host_header_case_insensitive;
          "parse_named_json_request" >:: test_parse_named_json_request;
          "parse_two_requests_with_separator" >:: test_parse_two_requests_with_separator;
          "parse_request_line_missing_url" >:: test_parse_request_line_missing_url;

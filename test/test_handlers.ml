@@ -1,4 +1,5 @@
 open OUnit2
+open Freight_plugin
 
 let has_call pred calls =
   List.exists pred calls

@@ -1,3 +1,5 @@
+open Freight_plugin
+
 type call =
   | Current_buffer
   | Buffer_lines of Freight_effect.buffer_id

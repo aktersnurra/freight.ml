@@ -272,6 +272,33 @@ let test_freight_view_all _ =
   in
   assert_bool "scratch updated" (has_update_scratch calls)
 
+(* history *)
+
+let test_push_history _ =
+  let state = State.create () in
+  let req = { Freight.Ast.name = Some "r1"; method_ = Get;
+               url = "https://example.com"; headers = []; body = Body_none } in
+  let resp = { Freight.Ast.status = 200; status_text = "OK";
+               headers = []; body = ""; duration_ms = 1; request = req } in
+  State.push_history state req resp "verbose";
+  assert_equal 1 (List.length state.State.history);
+  let entry = List.hd state.State.history in
+  assert_equal req entry.State.request;
+  assert_equal resp entry.State.response;
+  assert_equal "verbose" entry.State.verbose
+
+let test_push_history_cap _ =
+  let state = State.create () in
+  let req = { Freight.Ast.name = None; method_ = Get;
+               url = "https://example.com"; headers = []; body = Body_none } in
+  let resp = { Freight.Ast.status = 200; status_text = "OK";
+               headers = []; body = ""; duration_ms = 1; request = req } in
+  for i = 1 to 55 do
+    State.push_history state req { resp with Freight.Ast.body = string_of_int i } "v"
+  done;
+  assert_equal 50 (List.length state.State.history);
+  assert_equal "55" (List.hd state.State.history).State.response.Freight.Ast.body
+
 let suite =
   "Handlers" >:::
     [ "freight_open" >:: test_freight_open
@@ -286,6 +313,8 @@ let suite =
     ; "freight_view Body" >:: test_freight_view_body
     ; "freight_view Headers" >:: test_freight_view_headers
     ; "freight_view All" >:: test_freight_view_all
+    ; "push_history" >:: test_push_history
+    ; "push_history_cap" >:: test_push_history_cap
     ]
 
 let () = run_test_tt_main suite

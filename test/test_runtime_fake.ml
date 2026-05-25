@@ -2,23 +2,23 @@ open Freight_plugin
 
 type call =
   | Current_buffer
-  | Buffer_lines of Freight_effect.buffer_id
-  | Buffer_dir of Freight_effect.buffer_id
+  | Buffer_lines of Freight_plugin.Freight_effect.buffer_id
+  | Buffer_dir of Freight_plugin.Freight_effect.buffer_id
   | Cursor
-  | Show_scratch of Freight_effect.scratch_view
-  | Update_scratch of Freight_effect.buffer_id * Freight_effect.scratch_view
-  | Set_keymap of Freight_effect.buffer_id * string * string
+  | Show_scratch of Freight_plugin.Freight_effect.scratch_view
+  | Update_scratch of Freight_plugin.Freight_effect.buffer_id * Freight_plugin.Freight_effect.scratch_view
+  | Set_keymap of Freight_plugin.Freight_effect.buffer_id * string * string
   | Load_env of { dir : string; active_env : string option }
   | Run_curl of Freight.Executor.invocation
-  | Notify of Freight_effect.notify_level * string
+  | Notify of Freight_plugin.Freight_effect.notify_level * string
   | Fork of string
   | Nvim_call of string * Msgpck.t list
 
 type config =
-  { current_buffer : Freight_effect.buffer_id
+  { current_buffer : Freight_plugin.Freight_effect.buffer_id
   ; buffer_lines : string list
   ; buffer_dir : string option
-  ; cursor : Freight_effect.Cursor.t
+  ; cursor : Freight_plugin.Freight_effect.Cursor.t
   ; env : Freight.Env.t
   ; curl_result : (string, string) result
   ; nvim_eval_result : Msgpck.t
@@ -26,10 +26,10 @@ type config =
   }
 
 let default_config =
-  { current_buffer = Freight_effect.Buffer_id.of_int 1
+  { current_buffer = Freight_plugin.Freight_effect.Buffer_id.of_int 1
   ; buffer_lines = []
   ; buffer_dir = None
-  ; cursor = { Freight_effect.Cursor.row = 0; col = 0 }
+  ; cursor = { Freight_plugin.Freight_effect.Cursor.row = 0; col = 0 }
   ; env = Freight.Env.empty
   ; curl_result = Ok ""
   ; nvim_eval_result = Msgpck.Int (-1)

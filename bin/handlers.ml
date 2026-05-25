@@ -144,6 +144,7 @@ let freight_run state =
             state.State.response_buf <- Some loading_buf;
             state.State.response_buf_name <- Some name;
             state.State.verbose_output <- Some verbose_raw;
+            State.push_history state request response verbose_raw;
             Freight_effect.update_scratch loading_buf
               ~name ~filetype
               ~lines:(Freight.Response.render response);
@@ -186,3 +187,46 @@ let freight_view state view_name =
            (Freight.Response.render_all response, ft)
        in
        Freight_effect.update_scratch buf ~name:buf_name ~filetype ~lines)
+
+let freight_history state =
+  let lines = Request_view.render_history state.State.history in
+  let buf =
+    Freight_effect.show_scratch
+      ~name:"freight://history"
+      ~filetype:"freight"
+      ~lines
+  in
+  set_buf_keymaps buf;
+  Freight_effect.set_keymap buf ~key:"<CR>"
+    ~command:":execute 'FreightViewHistory ' . line('.')<CR>"
+
+let freight_view_history state line_number =
+  let index = line_number - 1 in
+  match List.nth_opt state.State.history index with
+  | None -> show_error "No history entry at that line."
+  | Some entry ->
+    let request = entry.State.request in
+    let response = entry.State.response in
+    let name = Freight.Buffer.buffer_name request in
+    let filetype =
+      Freight.Buffer.filetype_of_content_type
+        (Freight.Response.detect_content_type response)
+    in
+    state.State.last_response <- Some response;
+    state.State.verbose_output <- Some entry.State.verbose;
+    (match state.State.response_buf, state.State.response_buf_name with
+     | Some buf, Some buf_name ->
+       Freight_effect.update_scratch buf ~name:buf_name ~filetype
+         ~lines:(Freight.Response.render response)
+     | _ ->
+       let buf =
+         Freight_effect.show_scratch ~name ~filetype
+           ~lines:(Freight.Response.render response)
+       in
+       set_buf_keymaps buf;
+       Freight_effect.set_keymap buf ~key:"B" ~command:":FreightView Body<CR>";
+       Freight_effect.set_keymap buf ~key:"H" ~command:":FreightView Headers<CR>";
+       Freight_effect.set_keymap buf ~key:"A" ~command:":FreightView All<CR>";
+       Freight_effect.set_keymap buf ~key:"V" ~command:":FreightView Verbose<CR>";
+       state.State.response_buf <- Some buf;
+       state.State.response_buf_name <- Some name)

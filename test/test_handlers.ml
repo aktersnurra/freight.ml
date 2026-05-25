@@ -1,5 +1,4 @@
 open OUnit2
-open Freight_plugin
 
 let has_call pred calls =
   List.exists pred calls
@@ -204,12 +203,9 @@ let test_freight_view_body _ =
         ; body = Freight.Ast.Body_none
         }
     };
+  state.State.response_buf <- Some 42;
   state.State.response_buf_name <- Some "freight://response/test";
-  let config =
-    { Test_runtime_fake.default_config with
-      nvim_eval_result = Msgpck.Int 5
-    }
-  in
+  let config = Test_runtime_fake.default_config in
   let (), calls =
     Test_runtime_fake.run config @@ fun () ->
       Handlers.freight_view state "Body"
@@ -232,12 +228,9 @@ let test_freight_view_headers _ =
         ; body = Freight.Ast.Body_none
         }
     };
+  state.State.response_buf <- Some 42;
   state.State.response_buf_name <- Some "freight://response/test";
-  let config =
-    { Test_runtime_fake.default_config with
-      nvim_eval_result = Msgpck.Int 5
-    }
-  in
+  let config = Test_runtime_fake.default_config in
   let (), calls =
     Test_runtime_fake.run config @@ fun () ->
       Handlers.freight_view state "Headers"
@@ -260,12 +253,9 @@ let test_freight_view_all _ =
         ; body = Freight.Ast.Body_none
         }
     };
+  state.State.response_buf <- Some 42;
   state.State.response_buf_name <- Some "freight://response/test";
-  let config =
-    { Test_runtime_fake.default_config with
-      nvim_eval_result = Msgpck.Int 5
-    }
-  in
+  let config = Test_runtime_fake.default_config in
   let (), calls =
     Test_runtime_fake.run config @@ fun () ->
       Handlers.freight_view state "All"
@@ -299,6 +289,49 @@ let test_push_history_cap _ =
   assert_equal 50 (List.length state.State.history);
   assert_equal "55" (List.hd state.State.history).State.response.Freight.Ast.body
 
+let test_freight_run_appends_history _ =
+  let raw_response =
+    "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nhello\n200\n0.010"
+  in
+  let config =
+    { Test_runtime_fake.default_config with
+      buffer_lines = [ "GET https://example.com" ]
+    ; curl_result = Ok raw_response
+    ; fork_mode = `Run_immediately
+    }
+  in
+  let state = State.create () in
+  let (), _calls =
+    Test_runtime_fake.run config @@ fun () ->
+      Handlers.freight_run state
+  in
+  assert_equal 1 (List.length state.State.history)
+
+let test_freight_history_empty _ =
+  let config = Test_runtime_fake.default_config in
+  let state = State.create () in
+  let (), calls =
+    Test_runtime_fake.run config @@ fun () ->
+      Handlers.freight_history state
+  in
+  assert_bool "shows history scratch"
+    (has_show_scratch ~name:"freight://history" calls)
+
+let test_freight_view_history _ =
+  let state = State.create () in
+  let req = { Freight.Ast.name = Some "r1"; method_ = Freight.Ast.Get;
+               url = "https://example.com"; headers = []; body = Freight.Ast.Body_none } in
+  let resp = { Freight.Ast.status = 200; status_text = "OK";
+               headers = []; body = "hello"; duration_ms = 1; request = req } in
+  State.push_history state req resp "verbose";
+  let config = Test_runtime_fake.default_config in
+  let (), calls =
+    Test_runtime_fake.run config @@ fun () ->
+      Handlers.freight_view_history state 1
+  in
+  assert_bool "shows response scratch"
+    (has_show_scratch ~name:"freight://response/r1" calls)
+
 let suite =
   "Handlers" >:::
     [ "freight_open" >:: test_freight_open
@@ -309,12 +342,15 @@ let suite =
     ; "freight_run curl error" >:: test_freight_run_curl_error
     ; "freight_run success" >:: test_freight_run_success
     ; "freight_run parse error" >:: test_freight_run_parse_error
+    ; "freight_run appends history" >:: test_freight_run_appends_history
     ; "freight_view no response" >:: test_freight_view_no_response
     ; "freight_view Body" >:: test_freight_view_body
     ; "freight_view Headers" >:: test_freight_view_headers
     ; "freight_view All" >:: test_freight_view_all
     ; "push_history" >:: test_push_history
     ; "push_history_cap" >:: test_push_history_cap
+    ; "freight_history empty" >:: test_freight_history_empty
+    ; "freight_view_history" >:: test_freight_view_history
     ]
 
 let () = run_test_tt_main suite

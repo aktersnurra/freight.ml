@@ -16,12 +16,14 @@ let register_commands ~call channel =
     let cmd_str = Printf.sprintf "command!%s %s %s" nargs_str name call_str in
     ignore (call "nvim_command" [ Msgpck.String cmd_str ])
   in
-  cmd "FreightOpen"    `None     "FreightOpen";
-  cmd "FreightRun"     `None     "FreightRun";
-  cmd "FreightEnv"     `Optional "FreightEnv";
-  cmd "FreightInspect" `None     "FreightInspect";
-  cmd "FreightView"    `Required "FreightView";
-  cmd "FreightHelp"   `None     "FreightHelp"
+  cmd "FreightOpen"        `None     "FreightOpen";
+  cmd "FreightRun"         `None     "FreightRun";
+  cmd "FreightEnv"         `Optional "FreightEnv";
+  cmd "FreightInspect"     `None     "FreightInspect";
+  cmd "FreightView"        `Required "FreightView";
+  cmd "FreightHelp"        `None     "FreightHelp";
+  cmd "FreightHistory"     `None     "FreightHistory";
+  cmd "FreightViewHistory" `Required "FreightViewHistory"
 
 let dispatch state method_ params =
   match method_ with
@@ -52,6 +54,18 @@ let dispatch state method_ params =
     Msgpck.Nil
   | "FreightHelp" ->
     Handlers.freight_help state;
+    Msgpck.Nil
+  | "FreightHistory" ->
+    Handlers.freight_history state;
+    Msgpck.Nil
+  | "FreightViewHistory" ->
+    let line_number =
+      match params with
+      | Msgpck.String s :: _ -> (try int_of_string (String.trim s) with _ -> 1)
+      | Msgpck.Int n :: _ -> n
+      | _ -> 1
+    in
+    Handlers.freight_view_history state line_number;
     Msgpck.Nil
   | _ ->
     Msgpck.Nil

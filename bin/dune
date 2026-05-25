@@ -1,6 +1,6 @@
 (library
  (name freight_plugin)
- (wrapped true)
+ (wrapped false)
  (modules freight_effect state scratch handlers request_view)
  (libraries freight msgpck)
  (flags (:standard -w @A-4-33-40-41-42-43-34-44)))

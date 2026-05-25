@@ -1,56 +1,83 @@
+let box_width = 60
+
+let pad_right s len =
+  let n = String.length s in
+  if n >= len then String.sub s 0 len
+  else s ^ String.make (len - n) ' '
+
+let box_section title rows =
+  let inner = box_width - 2 in
+  let dash_str = "\xe2\x94\x80" in
+  let dashes = String.concat "" (List.init (inner - String.length title - 3) (fun _ -> dash_str)) in
+  let top =
+    "\xe2\x95\xad\xe2\x94\x80 " ^ title ^ " " ^ dashes ^ "\xe2\x95\xae"
+  in
+  let bottom = "\xe2\x95\xb0" ^ String.concat "" (List.init inner (fun _ -> dash_str)) ^ "\xe2\x95\xaf" in
+  let body =
+    List.map (fun row ->
+      let content = pad_right row (inner - 2) in
+      "\xe2\x94\x82  " ^ content ^ "\xe2\x94\x82"
+    ) rows
+  in
+  top :: body @ [ bottom ]
+
+let kv_row key value =
+  let k = pad_right key 12 in
+  k ^ "  " ^ value
+
 let render_body = function
-  | Freight.Ast.Body_none -> [ "Body: <none>" ]
-  | Body_inline body -> [ "Body: inline"; body ]
-  | Body_file path -> [ "Body: file " ^ path ]
+  | Freight.Ast.Body_none -> box_section "Body" [ "(none)" ]
+  | Body_inline body -> box_section "Body" (String.split_on_char '\n' body)
+  | Body_file path -> box_section "Body" [ "file  " ^ path ]
 
 let render_headers headers =
   match headers with
-  | [] -> [ "Headers: <none>" ]
-  | headers ->
-      "Headers:"
-      :: List.map (fun (key, value) -> "  " ^ key ^ ": " ^ value) headers
+  | [] -> box_section "Headers" [ "(none)" ]
+  | hs ->
+    let rows = List.map (fun (k, v) -> kv_row k v) hs in
+    box_section "Headers" rows
 
 let render_request request invocation =
   let name = Option.value request.Freight.Ast.name ~default:"<unnamed>" in
-  [ "Freight Inspect";
-    "";
-    "Name: " ^ name;
-    "Method: " ^ Freight.Ast.method_to_string request.method_;
-    "URL: " ^ request.url;
-    "" ]
+  let meta_rows =
+    [ kv_row "Name"   name
+    ; kv_row "Method" (Freight.Ast.method_to_string request.method_)
+    ; kv_row "URL"    request.url
+    ]
+  in
+  let curl_rows = List.map (fun a -> "  " ^ a) invocation.Freight.Executor.args in
+  box_section "Request" meta_rows
+  @ [ "" ]
   @ render_headers request.headers
   @ [ "" ]
   @ render_body request.body
-  @ [ ""; "Curl argv:" ]
-  @ List.map (fun arg -> "  " ^ arg) invocation.Freight.Executor.args
+  @ [ "" ]
+  @ box_section "Curl argv" curl_rows
 
 let render_parse_error error =
-  [ "Freight Parse Error";
-    "";
-    "Line: " ^ string_of_int error.Freight.Ast.line;
-    "Message: " ^ error.message;
-    "Snippet: " ^ error.snippet ]
+  let rows =
+    [ kv_row "Line"    (string_of_int error.Freight.Ast.line)
+    ; kv_row "Message" error.message
+    ; kv_row "Snippet" error.snippet
+    ]
+  in
+  box_section "Parse Error" rows
 
 let render_message ~title ~body =
-  title :: "" :: body
+  box_section title body
 
 let render_env ~active_env ~pairs ~unresolved =
   let label = match active_env with Some n -> n | None -> "(none)" in
-  let vars_section =
+  let vars_rows =
     match pairs with
-    | [] -> [ "Variables: (none)" ]
-    | _ ->
-      "Variables:"
-      :: List.map (fun (k, v) -> Printf.sprintf "  %s = %s" k v) pairs
+    | [] -> [ "(none)" ]
+    | ps -> List.map (fun (k, v) -> kv_row k v) ps
   in
-  let unresolved_section =
+  let unresolved_rows =
     match unresolved with
-    | [] -> [ "Unresolved: (none)" ]
-    | names ->
-      "Unresolved:"
-      :: List.map (fun name -> Printf.sprintf "  {{%s}}" name) names
+    | [] -> [ "(none)" ]
+    | ns -> List.map (fun n -> "{{" ^ n ^ "}}") ns
   in
-  [ "Freight Env"; ""; "Active: " ^ label; "" ]
-  @ vars_section
+  box_section ("Env: " ^ label) vars_rows
   @ [ "" ]
-  @ unresolved_section
+  @ box_section "Unresolved" unresolved_rows

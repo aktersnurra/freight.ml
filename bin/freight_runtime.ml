@@ -76,6 +76,10 @@ let rec run ~proc_mgr ~sw ~rpc f =
             Some (fun (k : (a, _) Effect.Deep.continuation) ->
               Scratch.set_keymap ~call buf ~key ~command;
               Effect.Deep.continue k ())
+          | Freight_effect.Load_env { dir; active_env } ->
+            Some (fun (k : (a, _) Effect.Deep.continuation) ->
+              let env = Freight.Env.load ~dir ~active_env in
+              Effect.Deep.continue k env)
           | Freight_effect.Run_curl invocation ->
             Some (fun (k : (a, _) Effect.Deep.continuation) ->
               let result = run_curl ~proc_mgr invocation in

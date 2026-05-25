@@ -13,7 +13,7 @@ let current_source () =
 
 let resolve_env state buf =
   match Freight_effect.buffer_dir buf with
-  | Some dir -> Freight.Env.load ~dir ~active_env:state.State.active_env
+  | Some dir -> Freight_effect.load_env ~dir ~active_env:state.State.active_env
   | None -> state.State.env
 
 let resolve_request state source cursor_line buf =
@@ -37,7 +37,7 @@ let freight_env state arg =
   let buf = Freight_effect.current_buffer () in
   let dir_opt = Freight_effect.buffer_dir buf in
   (match dir_opt with
-   | Some dir -> state.State.env <- Freight.Env.load ~dir ~active_env:env_name
+   | Some dir -> state.State.env <- Freight_effect.load_env ~dir ~active_env:env_name
    | None -> ());
   let lines = Freight_effect.buffer_lines buf in
   let source = String.concat "\n" lines in

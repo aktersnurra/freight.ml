@@ -8,6 +8,7 @@ type call =
   | Show_scratch of Freight_effect.scratch_view
   | Update_scratch of Freight_effect.buffer_id * Freight_effect.scratch_view
   | Set_keymap of Freight_effect.buffer_id * string * string
+  | Load_env of { dir : string; active_env : string option }
   | Run_curl of Freight.Executor.invocation
   | Notify of Freight_effect.notify_level * string
   | Fork of string
@@ -18,6 +19,7 @@ type config =
   ; buffer_lines : string list
   ; buffer_dir : string option
   ; cursor : Freight_effect.Cursor.t
+  ; env : Freight.Env.t
   ; curl_result : (string, string) result
   ; nvim_eval_result : Msgpck.t
   ; fork_mode : [ `Run_immediately | `Capture_only ]
@@ -28,6 +30,7 @@ let default_config =
   ; buffer_lines = []
   ; buffer_dir = None
   ; cursor = { Freight_effect.Cursor.row = 0; col = 0 }
+  ; env = Freight.Env.empty
   ; curl_result = Ok ""
   ; nvim_eval_result = Msgpck.Int (-1)
   ; fork_mode = `Run_immediately
@@ -72,6 +75,10 @@ let rec run config f =
               Some (fun (k : (a, _) Effect.Deep.continuation) ->
                 log (Set_keymap (buf, key, command));
                 Effect.Deep.continue k ())
+            | Freight_effect.Load_env { dir; active_env } ->
+              Some (fun (k : (a, _) Effect.Deep.continuation) ->
+                log (Load_env { dir; active_env });
+                Effect.Deep.continue k config.env)
             | Freight_effect.Run_curl invocation ->
               Some (fun (k : (a, _) Effect.Deep.continuation) ->
                 log (Run_curl invocation);

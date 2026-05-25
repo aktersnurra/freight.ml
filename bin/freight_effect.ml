@@ -38,6 +38,7 @@ type _ Effect.t +=
   | Run_curl : Freight.Executor.invocation -> (string, string) result Effect.t
   | Notify : notify_level * string -> unit Effect.t
   | Fork : string * (unit -> unit) -> unit Effect.t
+  | Load_env : { dir : string; active_env : string option } -> Freight.Env.t Effect.t
   | Nvim_call : string * Msgpck.t list -> Msgpck.t Effect.t
 
 let current_buffer () = Effect.perform Current_buffer
@@ -54,6 +55,7 @@ let update_scratch buf ~name ~filetype ~lines =
 let set_keymap buf ~key ~command =
   Effect.perform (Set_keymap (buf, key, command))
 
+let load_env ~dir ~active_env = Effect.perform (Load_env { dir; active_env })
 let run_curl invocation = Effect.perform (Run_curl invocation)
 let notify level msg = Effect.perform (Notify (level, msg))
 let fork label f = Effect.perform (Fork (label, f))

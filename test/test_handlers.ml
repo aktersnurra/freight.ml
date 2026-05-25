@@ -64,7 +64,7 @@ let test_freight_env _ =
 let test_freight_inspect_parse_error _ =
   let config =
     { Test_runtime_fake.default_config with
-      buffer_lines = [ "INVALID LINE" ]
+      buffer_lines = [ "GET" ]
     }
   in
   let (), calls =

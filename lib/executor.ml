@@ -1,7 +1,4 @@
-open Core
-open Async
-
-type curl_invocation = {
+type invocation = {
   args : string list;
   env : (string * string) list;
 }
@@ -18,15 +15,10 @@ let body_args method_ = function
 
 let to_curl request =
   let method_ = Ast.method_to_string request.Ast.method_ in
-  let headers = List.concat_map request.headers ~f:header_arg in
+  let headers = List.concat_map header_arg request.headers in
   let args =
     [ "-i"; "-s"; "-X"; method_ ] @ headers
     @ body_args request.method_ request.body
     @ [ request.url; "-w"; "\n%{http_code}\n%{time_total}" ]
   in
   { args; env = [] }
-
-let run invocation =
-  match%map Process.run ~prog:"curl" ~args:invocation.args () with
-  | Ok stdout -> Ok stdout
-  | Error err -> Error (Error.to_string_hum err)

@@ -4,12 +4,14 @@ type incoming =
   | Request of { msgid : int; method_ : string; params : Msgpck.t list }
   | Notification of { method_ : string; params : Msgpck.t list }
 
-val create : unit -> t * incoming Async.Pipe.Reader.t * unit Async.Deferred.t
-(** Start the background reader. Returns the rpc handle and a pipe of incoming messages. *)
+val create :
+  sw:Eio.Switch.t ->
+  stdin:_ Eio.Flow.source ->
+  stdout:_ Eio.Flow.sink ->
+  t
 
-val read : incoming Async.Pipe.Reader.t -> incoming Async.Deferred.t
-(** Read one incoming message. *)
+val read : t -> incoming
 
 val reply_ok : t -> msgid:int -> Msgpck.t -> unit
 val reply_error : t -> msgid:int -> string -> unit
-val call : t -> string -> Msgpck.t list -> (Msgpck.t, string) result Async.Deferred.t
+val call : t -> string -> Msgpck.t list -> Msgpck.t

@@ -3,16 +3,16 @@ type error =
   | `No_request
   ]
 
-let substitute_request env request =
+let substitute_request env (request : Ast.request) =
   let sub = Env.substitute env in
   let body =
-    match request.Ast.body with
+    match request.body with
     | Ast.Body_inline s -> Ast.Body_inline (sub s)
     | other -> other
   in
   { request with
-    Ast.url = sub request.Ast.url
-  ; headers = List.map (fun (k, v) -> (k, sub v)) request.Ast.headers
+    url = sub request.url
+  ; headers = List.map (fun (k, v) -> (k, sub v)) request.headers
   ; body
   }
 

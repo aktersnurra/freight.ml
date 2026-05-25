@@ -172,11 +172,11 @@ let render response =
   @ [ "" ]
   @ box_section "Headers" header_rows
   @ [ "" ]
-  @ box_section "Body" (String.split_on_char '\n' body)
+  @ box_section "Body" (split_lines body)
 
 let render_body response =
   let body = pretty_print_body (detect_content_type response) response.body in
-  box_section "Body" (String.split_on_char '\n' body)
+  box_section "Body" (split_lines body)
 
 let render_headers response =
   let status = Printf.sprintf "HTTP %d %s" response.Ast.status response.status_text in
@@ -188,7 +188,7 @@ let render_headers response =
   in
   box_section "Headers" rows
 
-let render_all response = render response
+let render_all = render
 
 let render_verbose raw =
   box_section "Verbose" (split_lines raw)

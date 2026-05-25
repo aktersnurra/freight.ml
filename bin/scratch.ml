@@ -28,7 +28,7 @@ let show ~call ~name ~filetype ~lines =
   ignore (call "nvim_buf_set_option"
     [ buf; Msgpck.String "modifiable"; Msgpck.Bool false ]);
   ignore (call "nvim_command"
-    [ Msgpck.String (Printf.sprintf "split | buffer %d" handle_int) ]);
+    [ Msgpck.String (Printf.sprintf "vsplit | buffer %d" handle_int) ]);
   handle_int
 
 let update ~call buf_id ~filetype ~lines =
@@ -103,18 +103,12 @@ let show_float ~call ~lines =
       ; (Msgpck.String "focusable", Msgpck.Bool true)
       ]
   in
-  let win = call "nvim_open_win" [ buf; Msgpck.Bool true; opts ] in
-  let win_id =
-    match win with
-    | Msgpck.Int n -> n
-    | Msgpck.Ext (_, s) -> ext_to_int s
-    | _ -> failwith "expected window handle"
-  in
+  ignore (call "nvim_open_win" [ buf; Msgpck.Bool true; opts ]);
   ignore (call "nvim_buf_set_keymap"
     [ buf
     ; Msgpck.String "n"
     ; Msgpck.String "q"
-    ; Msgpck.String (Printf.sprintf ":lua vim.api.nvim_win_close(%d, true)<CR>" win_id)
+    ; Msgpck.String ":close<CR>"
     ; Msgpck.Map
         [ (Msgpck.String "noremap", Msgpck.Bool true)
         ; (Msgpck.String "silent",  Msgpck.Bool true)

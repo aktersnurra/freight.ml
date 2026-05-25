@@ -102,7 +102,7 @@ let freight_run state =
     let scratch_buf =
       Freight_effect.show_scratch
         ~name:"freight://error"
-        ~filetype:"text"
+        ~filetype:"freight"
         ~lines:(Request_view.render_parse_error err)
     in
     set_buf_keymaps scratch_buf

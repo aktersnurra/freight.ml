@@ -202,6 +202,9 @@ let freight_history state =
 
 let freight_view_history state line_number =
   let index = line_number - 1 in
+  Freight_effect.notify Info
+    (Printf.sprintf "FreightViewHistory: line=%d history_len=%d"
+       line_number (List.length state.State.history));
   match List.nth_opt state.State.history index with
   | None -> show_error "No history entry at that line."
   | Some entry ->
@@ -217,7 +220,9 @@ let freight_view_history state line_number =
     (match state.State.response_buf, state.State.response_buf_name with
      | Some buf, Some buf_name ->
        Freight_effect.update_scratch buf ~name:buf_name ~filetype
-         ~lines:(Freight.Response.render response)
+         ~lines:(Freight.Response.render response);
+       ignore (Freight_effect.nvim_call "nvim_command"
+         [ Msgpck.String (Printf.sprintf "vsplit | buffer %d" buf) ])
      | _ ->
        let buf =
          Freight_effect.show_scratch ~name ~filetype

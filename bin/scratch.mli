@@ -1,18 +1,20 @@
-val show
-  :  rpc:Nvim_rpc.t
-  -> name:string
-  -> filetype:string
-  -> lines:string list
-  -> unit Async.Deferred.t
+val show :
+  call:(string -> Msgpck.t list -> Msgpck.t) ->
+  name:string ->
+  filetype:string ->
+  lines:string list ->
+  int
 
-val update
-  :  rpc:Nvim_rpc.t
-  -> Msgpck.t
-  -> filetype:string
-  -> lines:string list
-  -> unit Async.Deferred.t
+val update :
+  call:(string -> Msgpck.t list -> Msgpck.t) ->
+  int ->
+  filetype:string ->
+  lines:string list ->
+  unit
 
-val show_loading
-  :  rpc:Nvim_rpc.t
-  -> name:string
-  -> Msgpck.t Async.Deferred.t
+val set_keymap :
+  call:(string -> Msgpck.t list -> Msgpck.t) ->
+  int ->
+  key:string ->
+  command:string ->
+  unit

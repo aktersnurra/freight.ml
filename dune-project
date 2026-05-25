@@ -26,8 +26,9 @@
   yojson
   re
   msgpck
-  async
-  core
+  eio
+  eio_main
+  eio_posix
   (ounit2 :with-test)
   (qcheck-core :with-test))
 

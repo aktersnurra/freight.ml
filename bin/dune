@@ -1,7 +1,12 @@
+(library
+ (name freight_plugin)
+ (modules freight_effect state scratch handlers request_view)
+ (libraries freight msgpck)
+ (flags (:standard -w @A-4-33-40-41-42-43-34-44)))
+
 (executable
  (public_name freight)
  (name main)
- (modules main nvim_rpc state scratch handlers request_view)
- (libraries freight msgpck async core)
- (preprocess (pps ppx_jane))
+ (modules main nvim_rpc freight_runtime)
+ (libraries freight freight_plugin msgpck eio eio_main eio_posix)
  (flags (:standard -w @A-4-33-40-41-42-43-34-44)))

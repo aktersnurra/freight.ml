@@ -2,19 +2,19 @@
 
 ![freight logo](assets/freight-logo.png)
 
-A Neovim HTTP client plugin written in OCaml. Parses JetBrains-style `.http` files, substitutes environment variables, builds and executes `curl` invocations, and renders responses in scratch buffers — all driven by a persistent VCaml process communicating with Neovim over msgpack RPC.
+A Neovim HTTP client plugin written in OCaml. Parses JetBrains-style `.http` files, substitutes environment variables, builds and executes `curl` invocations, and renders responses in scratch buffers — all driven by a persistent OCaml process communicating with Neovim over msgpack RPC.
 
 ## Status
 
-The core library and Neovim command shell are implemented. HTTP execution (actually running curl) is not yet wired up; `:FreightRun` currently renders the parsed request and curl arguments without firing the request.
+The core library, command shell, and HTTP execution are implemented. `:FreightRun` parses the request at cursor, substitutes environment variables, runs curl in the background, and renders the response in a scratch buffer with `B`/`H`/`A` keymaps to toggle between body, headers, and full views.
 
 ## Requirements
 
-- Neovim ≥ 0.11
-- OCaml ≥ 5.1
-- dune ≥ 3.17
+- Neovim >= 0.11
+- OCaml >= 5.1
+- dune >= 3.21
 - curl (runtime)
-- opam packages: `angstrom`, `yojson`, `re`, `vcaml`, `async`, `core`
+- opam packages: `angstrom`, `yojson`, `re`, `msgpck`, `eio`, `eio_main`, `eio_posix`
 
 ## Installation
 
@@ -62,9 +62,10 @@ let g:freight_executable = '/path/to/main.exe'
 |---|---|
 | `:FreightStart` | Start the plugin process manually |
 | `:FreightOpen` | Open a scratch buffer with `filetype=http` for writing requests |
-| `:FreightRun` | Parse the current buffer, select the request at cursor, substitute env, and render the curl invocation in an inspect buffer |
+| `:FreightRun` | Parse the request at cursor, execute curl in the background, render the response |
 | `:FreightEnv [name]` | Set the active environment (e.g. `:FreightEnv staging`). Omit the name to clear it |
-| `:FreightInspect` | Show the curl metadata for the current buffer, or a diagnostic if none exists |
+| `:FreightInspect` | Show the curl metadata for the request at cursor |
+| `:FreightView <Body\|Headers\|All>` | Switch the response buffer view (also mapped to `B`, `H`, `A` keys) |
 
 ## HTTP file format
 
@@ -123,13 +124,41 @@ GET {{BASE_URL}}/profile
 Authorization: Bearer {{login.response.body.token}}
 ```
 
+## Architecture
+
+freight.ml uses three cleanly separated layers:
+
+**Pure library** (`lib/`) — parsing, environment substitution, curl argument building, response parsing and rendering, response chaining. No IO dependencies beyond Stdlib file reads for `.env` loading.
+
+**Effect boundary** (`bin/freight_effect.ml`) — domain-level OCaml 5 effect handlers with typed wrappers. Handler code performs effects like `current_buffer`, `run_curl`, and `load_env` without knowing which runtime interprets them.
+
+**Eio runtime** (`bin/freight_runtime.ml`, `bin/nvim_rpc.ml`) — the production effect interpreter backed by Eio for concurrency, subprocess execution, and msgpack RPC over stdin/stdout.
+
+This separation means handler logic reads like ordinary OCaml:
+
+```ocaml
+let freight_run state =
+  let buf, source, cursor_line = current_source () in
+  match resolve_request state source cursor_line buf with
+  | Error (`Parse err) -> (* show error *)
+  | Error `No_request -> (* show error *)
+  | Ok request ->
+    let loading_buf = Freight_effect.show_scratch ~name ~filetype ~lines in
+    Freight_effect.fork "FreightRun" @@ fun () ->
+      match Freight_effect.run_curl invocation with
+      | Error msg -> (* update scratch with error *)
+      | Ok raw -> (* parse response, update scratch, set keymaps *)
+```
+
+No `Deferred.t`, no `let%bind`, no `don't_wait_for`. A fake test interpreter can run the same handler code without Neovim, curl, or Eio.
+
 ## Development
 
 ```sh
 # Build
 dune build
 
-# Run all tests (OUnit2 + QCheck property-based tests)
+# Run all tests
 dune build @test/runtest
 
 # Run only the property-based tests
@@ -144,24 +173,31 @@ CI runs on every push and pull request via GitHub Actions (OCaml 5.2, ubuntu-lat
 ## Project layout
 
 ```
-lib/        Pure OCaml library (no VCaml/Async/Core dependency)
-  ast.ml      Core domain types: method_, request, response, parse_error
-  parser.ml   Angstrom parser for .http files
-  env.ml      .env file loading and {{variable}} substitution
-  executor.ml curl invocation builder
-  response.ml curl output parsing and response rendering
-  chaining.ml JSON path extraction and env injection for named requests
-  buffer.ml   Neovim buffer name helpers
+lib/        Pure OCaml library (no Eio/Async dependency)
+  ast.ml        Core domain types: method_, request, response, parse_error
+  parser.ml     Angstrom parser for .http files
+  env.ml        .env file loading and {{variable}} substitution
+  executor.ml   Pure curl invocation builder
+  resolve.ml    Request resolution: cursor selection + env substitution
+  response.ml   Curl output parsing and response rendering
+  chaining.ml   JSON path extraction and env injection for named requests
+  buffer.ml     Neovim buffer name helpers
 
-bin/        VCaml executable (Neovim plugin process)
-  main.ml     Plugin entry point, command registration
-  handlers.ml FreightOpen / FreightRun / FreightEnv / FreightInspect
-  scratch.ml  Scratch buffer helpers
-  state.ml    Mutable plugin state
+bin/        Neovim plugin executable
+  freight_effect.ml   OCaml 5 effect definitions + typed wrappers
+  freight_runtime.ml  Production Eio effect interpreter
+  nvim_rpc.ml         Msgpack RPC transport over Eio
+  main.ml             Entry point, command registration, dispatch loop
+  handlers.ml         Direct-style command handlers (open/run/env/inspect/view)
+  scratch.ml          Scratch buffer operations
+  request_view.ml     Pure rendering for inspect/error/env display
+  state.ml            Mutable plugin state
 
 test/
-  test_freight.ml   OUnit2 example-based tests (28 tests)
-  test_qcheck.ml    QCheck2 property-based tests (20 properties)
+  test_freight.ml       OUnit2 example-based tests (38 tests)
+  test_qcheck.ml        QCheck2 property-based tests (30 properties)
+  test_handlers.ml      Handler integration tests via fake effect interpreter
+  test_runtime_fake.ml  Deterministic effect interpreter for testing
 
 plugin/freight.vim    Vim command definitions and autostart autocmd
 autoload/freight.vim  Job management and RPC channel helpers

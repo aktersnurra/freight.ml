@@ -244,6 +244,110 @@ let test_parse_source_single_request =
          | _ -> false)
       | Error _ -> false)
 
+(* ── I: Resolve.substitute_request ──────────────────────────────────────── *)
+
+let test_substitute_request_replaces_url =
+  Test.make ~name:"substitute_request replaces {{var}} in url" ~count:300
+    (Gen.pair gen_env_key gen_plain_value)
+    (fun (key, value) ->
+      let env = Env.of_list [ (key, value) ] in
+      let req = { dummy_request with url = "https://{{" ^ key ^ "}}/path" } in
+      let result = Resolve.substitute_request env req in
+      String.equal result.url ("https://" ^ value ^ "/path"))
+
+let test_substitute_request_replaces_headers =
+  Test.make ~name:"substitute_request replaces {{var}} in header values" ~count:300
+    (Gen.pair gen_env_key gen_plain_value)
+    (fun (key, value) ->
+      let env = Env.of_list [ (key, value) ] in
+      let req = { dummy_request with headers = [ ("Auth", "Bearer {{" ^ key ^ "}}") ] } in
+      let result = Resolve.substitute_request env req in
+      match result.headers with
+      | [ ("Auth", v) ] -> String.equal v ("Bearer " ^ value)
+      | _ -> false)
+
+let test_substitute_request_replaces_inline_body =
+  Test.make ~name:"substitute_request replaces {{var}} in inline body" ~count:300
+    (Gen.pair gen_env_key gen_plain_value)
+    (fun (key, value) ->
+      let env = Env.of_list [ (key, value) ] in
+      let req = { dummy_request with body = Ast.Body_inline ("{{" ^ key ^ "}}") } in
+      let result = Resolve.substitute_request env req in
+      match result.body with
+      | Ast.Body_inline s -> String.equal s value
+      | _ -> false)
+
+let test_substitute_request_preserves_file_body =
+  Test.make ~name:"substitute_request leaves Body_file unchanged" ~count:200
+    (Gen.pair gen_env_key gen_plain_value)
+    (fun (key, value) ->
+      let env = Env.of_list [ (key, value) ] in
+      let path = "{{" ^ key ^ "}}.json" in
+      let req = { dummy_request with body = Ast.Body_file path } in
+      let result = Resolve.substitute_request env req in
+      match result.body with
+      | Ast.Body_file p -> String.equal p path
+      | _ -> false)
+
+let test_substitute_request_empty_env_preserves_vars =
+  Test.make ~name:"substitute_request with empty env preserves {{...}} markers"
+    ~count:300 gen_env_key
+    (fun key ->
+      let template = "https://{{" ^ key ^ "}}" in
+      let req = { dummy_request with url = template } in
+      let result = Resolve.substitute_request Env.empty req in
+      String.equal result.url template)
+
+(* ── J: Resolve.at_cursor ──────────────────────────────────────────────── *)
+
+let test_at_cursor_valid_request =
+  Test.make ~name:"at_cursor returns Ok for valid request at cursor" ~count:300
+    (Gen.pair gen_named_method
+       (Gen.string_size ~gen:(Gen.char_range 'a' 'z') (Gen.int_range 1 15)))
+    (fun (method_, host) ->
+      let source = Ast.method_to_string method_ ^ " https://" ^ host in
+      match Resolve.at_cursor ~source ~cursor_line:0 ~env:Env.empty with
+      | Ok req -> req.method_ = method_
+      | Error _ -> false)
+
+let test_at_cursor_empty_is_no_request =
+  Test.make ~name:"at_cursor on empty source returns No_request" ~count:50
+    (Gen.oneof_list [ ""; "   "; "\n\n" ])
+    (fun source ->
+      match Resolve.at_cursor ~source ~cursor_line:0 ~env:Env.empty with
+      | Error `No_request -> true
+      | _ -> false)
+
+(* ── K: Executor.to_curl invariants ────────────────────────────────────── *)
+
+let test_to_curl_always_has_method =
+  Test.make ~name:"to_curl output always contains -X METHOD" ~count:300
+    gen_named_method
+    (fun method_ ->
+      let req = { dummy_request with method_ } in
+      let inv = Executor.to_curl req in
+      let method_str = Ast.method_to_string method_ in
+      List.mem "-X" inv.args && List.mem method_str inv.args)
+
+let test_to_curl_always_has_url =
+  Test.make ~name:"to_curl output always contains the request url" ~count:300
+    (Gen.string_size ~gen:(Gen.char_range 'a' 'z') (Gen.int_range 1 20))
+    (fun host ->
+      let url = "https://" ^ host in
+      let req = { dummy_request with url } in
+      let inv = Executor.to_curl req in
+      List.mem url inv.args)
+
+let test_to_curl_headers_appear_after_h_flag =
+  Test.make ~name:"to_curl includes -H flag for each header" ~count:300
+    (Gen.pair gen_header_name gen_header_value)
+    (fun (key, value) ->
+      let value = String.trim value in
+      let req = { dummy_request with headers = [ (key, value) ] } in
+      let inv = Executor.to_curl req in
+      List.mem "-H" inv.args
+      && List.mem (key ^ ": " ^ value) inv.args)
+
 (* ── Runner ──────────────────────────────────────────────────────────────── *)
 
 let () =
@@ -276,4 +380,17 @@ let () =
       test_detect_no_header_is_plain;
       (* H *)
       test_parse_source_single_request;
+      (* I *)
+      test_substitute_request_replaces_url;
+      test_substitute_request_replaces_headers;
+      test_substitute_request_replaces_inline_body;
+      test_substitute_request_preserves_file_body;
+      test_substitute_request_empty_env_preserves_vars;
+      (* J *)
+      test_at_cursor_valid_request;
+      test_at_cursor_empty_is_no_request;
+      (* K *)
+      test_to_curl_always_has_method;
+      test_to_curl_always_has_url;
+      test_to_curl_headers_appear_after_h_flag;
     ]

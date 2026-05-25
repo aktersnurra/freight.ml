@@ -134,31 +134,61 @@ let pretty_print_body content_type body =
       | exception Yojson.Json_error _ -> body)
   | _ -> body
 
-let render response =
-  let status_line =
-    Printf.sprintf "HTTP %d %s (%d ms)" response.Ast.status response.status_text
-      response.duration_ms
+let box_width = 60
+
+let pad_right s len =
+  let n = String.length s in
+  if n >= len then String.sub s 0 len
+  else s ^ String.make (len - n) ' '
+
+let box_section title rows =
+  let inner = box_width - 2 in
+  let dash_str = "\xe2\x94\x80" in
+  let dash_count = max 0 (inner - String.length title - 3) in
+  let dashes = String.concat "" (List.init dash_count (fun _ -> dash_str)) in
+  let top = "\xe2\x95\xad\xe2\x94\x80 " ^ title ^ " " ^ dashes ^ "\xe2\x95\xae" in
+  let bottom = "\xe2\x95\xb0" ^ String.concat "" (List.init inner (fun _ -> dash_str)) ^ "\xe2\x95\xaf" in
+  let body =
+    List.map (fun row ->
+      let content = pad_right row (inner - 2) in
+      "\xe2\x94\x82  " ^ content ^ "\xe2\x94\x82"
+    ) rows
   in
-  let header_lines =
-    List.map (fun (name, value) -> Printf.sprintf "%s: %s" name value) response.headers
+  top :: body @ [ bottom ]
+
+let kv_row key value =
+  let k = pad_right key 12 in
+  k ^ "  " ^ value
+
+let render response =
+  let status = Printf.sprintf "HTTP %d %s" response.Ast.status response.status_text in
+  let timing = Printf.sprintf "%d ms" response.duration_ms in
+  let status_rows = [ kv_row "Status" status; kv_row "Time" timing ] in
+  let header_rows =
+    List.map (fun (name, value) -> kv_row name value) response.headers
   in
   let body = pretty_print_body (detect_content_type response) response.body in
-  status_line :: header_lines @ [ ""; body ]
+  box_section "Response" status_rows
+  @ [ "" ]
+  @ box_section "Headers" header_rows
+  @ [ "" ]
+  @ box_section "Body" (String.split_on_char '\n' body)
 
 let render_body response =
   let body = pretty_print_body (detect_content_type response) response.body in
-  [ body ]
+  box_section "Body" (String.split_on_char '\n' body)
 
 let render_headers response =
-  let status_line =
-    Printf.sprintf "HTTP %d %s (%d ms)" response.Ast.status response.status_text
-      response.duration_ms
+  let status = Printf.sprintf "HTTP %d %s" response.Ast.status response.status_text in
+  let timing = Printf.sprintf "%d ms" response.duration_ms in
+  let rows =
+    kv_row "Status" status
+    :: kv_row "Time" timing
+    :: List.map (fun (name, value) -> kv_row name value) response.headers
   in
-  let header_lines =
-    List.map (fun (name, value) -> Printf.sprintf "%s: %s" name value) response.headers
-  in
-  status_line :: header_lines
+  box_section "Headers" rows
 
 let render_all response = render response
 
-let render_verbose raw = split_lines raw
+let render_verbose raw =
+  box_section "Verbose" (split_lines raw)

@@ -8,7 +8,8 @@ let pad_right s len =
 let box_section title rows =
   let inner = box_width - 2 in
   let dash_str = "\xe2\x94\x80" in
-  let dashes = String.concat "" (List.init (inner - String.length title - 3) (fun _ -> dash_str)) in
+  let dash_count = max 0 (inner - String.length title - 3) in
+  let dashes = String.concat "" (List.init dash_count (fun _ -> dash_str)) in
   let top =
     "\xe2\x95\xad\xe2\x94\x80 " ^ title ^ " " ^ dashes ^ "\xe2\x95\xae"
   in
@@ -67,7 +68,7 @@ let render_message ~title ~body =
   box_section title body
 
 let render_env ~active_env ~pairs ~unresolved =
-  let label = match active_env with Some n -> n | None -> "(none)" in
+  let label = Option.value active_env ~default:"(none)" in
   let vars_rows =
     match pairs with
     | [] -> [ "(none)" ]

@@ -15,7 +15,7 @@ jobs:
           ocaml-compiler: "5.2"
 
       - name: Install dependencies
-        run: opam install angstrom yojson re ounit2 qcheck-core --yes
+        run: opam install . --deps-only --with-test --yes
 
       - name: Run tests
         run: opam exec -- dune build @test/runtest

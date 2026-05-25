@@ -60,7 +60,7 @@ let make_writer sink =
 
 let make_reader source =
   let buf = Buffer.create 65536 in
-  let tmp = Bytes.create 65536 in
+  let tmp = Cstruct.create 65536 in
   fun () ->
     let rec loop () =
       let s = Buffer.contents buf in
@@ -76,7 +76,7 @@ let make_reader source =
         read_more ()
     and read_more () =
       let n = Eio.Flow.single_read source tmp in
-      Buffer.add_subbytes buf tmp 0 n;
+      Buffer.add_string buf (Cstruct.to_string (Cstruct.sub tmp 0 n));
       loop ()
     in
     loop ()

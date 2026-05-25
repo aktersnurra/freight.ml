@@ -31,7 +31,21 @@ let run_curl ~proc_mgr invocation =
   | output -> Ok output
   | exception exn -> Error (Printexc.to_string exn)
 
-let rec run ~proc_mgr ~sw ~rpc f =
+let run_curl_verbose ~proc_mgr invocation =
+  let stderr_buf = Buffer.create 4096 in
+  let stderr_sink = Eio.Flow.buffer_sink stderr_buf in
+  let args = "-v" :: invocation.Freight.Executor.args in
+  match
+    Eio.Process.parse_out ~stderr:stderr_sink proc_mgr Eio.Buf_read.take_all
+      ("curl" :: args)
+  with
+  | _stdout -> Ok (Buffer.contents stderr_buf)
+  | exception exn ->
+    if Buffer.length stderr_buf > 0 then Ok (Buffer.contents stderr_buf)
+    else Error (Printexc.to_string exn)
+
+let rec run : type a. proc_mgr:_ -> sw:_ -> rpc:_ -> (unit -> a) -> a =
+  fun ~proc_mgr ~sw ~rpc f ->
   let call = Nvim_rpc.call rpc in
   Effect.Deep.try_with f ()
     { effc =
@@ -83,6 +97,10 @@ let rec run ~proc_mgr ~sw ~rpc f =
           | Freight_effect.Run_curl invocation ->
             Some (fun (k : (a, _) Effect.Deep.continuation) ->
               let result = run_curl ~proc_mgr invocation in
+              Effect.Deep.continue k result)
+          | Freight_effect.Run_curl_verbose invocation ->
+            Some (fun (k : (a, _) Effect.Deep.continuation) ->
+              let result = run_curl_verbose ~proc_mgr invocation in
               Effect.Deep.continue k result)
           | Freight_effect.Notify (level, msg) ->
             Some (fun (k : (a, _) Effect.Deep.continuation) ->

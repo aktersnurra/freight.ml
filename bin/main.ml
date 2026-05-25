@@ -20,7 +20,8 @@ let register_commands ~call channel =
   cmd "FreightRun"     `None     "FreightRun";
   cmd "FreightEnv"     `Optional "FreightEnv";
   cmd "FreightInspect" `None     "FreightInspect";
-  cmd "FreightView"    `Required "FreightView"
+  cmd "FreightView"    `Required "FreightView";
+  cmd "FreightHelp"   `None     "FreightHelp"
 
 let dispatch state method_ params =
   match method_ with
@@ -48,6 +49,9 @@ let dispatch state method_ params =
       | _ -> "All"
     in
     Handlers.freight_view state view_name;
+    Msgpck.Nil
+  | "FreightHelp" ->
+    Handlers.freight_help state;
     Msgpck.Nil
   | _ ->
     Msgpck.Nil

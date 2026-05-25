@@ -34,6 +34,7 @@ type _ Effect.t +=
   | Update_scratch : buffer_id * scratch_view -> unit Effect.t
   | Set_keymap : buffer_id * string * string -> unit Effect.t
   | Run_curl : Freight.Executor.invocation -> (string, string) result Effect.t
+  | Run_curl_verbose : Freight.Executor.invocation -> (string, string) result Effect.t
   | Notify : notify_level * string -> unit Effect.t
   | Fork : string * (unit -> unit) -> unit Effect.t
   | Load_env : { dir : string; active_env : string option } -> Freight.Env.t Effect.t
@@ -48,6 +49,7 @@ val update_scratch : buffer_id -> name:string -> filetype:string -> lines:string
 val set_keymap : buffer_id -> key:string -> command:string -> unit
 val load_env : dir:string -> active_env:string option -> Freight.Env.t
 val run_curl : Freight.Executor.invocation -> (string, string) result
+val run_curl_verbose : Freight.Executor.invocation -> (string, string) result
 val notify : notify_level -> string -> unit
 val fork : string -> (unit -> unit) -> unit
 val nvim_call : string -> Msgpck.t list -> Msgpck.t

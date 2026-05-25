@@ -160,3 +160,5 @@ let render_headers response =
   status_line :: header_lines
 
 let render_all response = render response
+
+let render_verbose raw = split_lines raw

@@ -1,5 +1,3 @@
-open Freight_plugin
-
 type call =
   | Current_buffer
   | Buffer_lines of Freight_effect.buffer_id
@@ -10,6 +8,7 @@ type call =
   | Set_keymap of Freight_effect.buffer_id * string * string
   | Load_env of { dir : string; active_env : string option }
   | Run_curl of Freight.Executor.invocation
+  | Run_curl_verbose of Freight.Executor.invocation
   | Notify of Freight_effect.notify_level * string
   | Fork of string
   | Nvim_call of string * Msgpck.t list
@@ -21,6 +20,7 @@ type config =
   ; cursor : Freight_effect.Cursor.t
   ; env : Freight.Env.t
   ; curl_result : (string, string) result
+  ; curl_verbose_result : (string, string) result
   ; nvim_eval_result : Msgpck.t
   ; fork_mode : [ `Run_immediately | `Capture_only ]
   }
@@ -32,6 +32,7 @@ let default_config =
   ; cursor = { Freight_effect.Cursor.row = 0; col = 0 }
   ; env = Freight.Env.empty
   ; curl_result = Ok ""
+  ; curl_verbose_result = Ok ""
   ; nvim_eval_result = Msgpck.Int (-1)
   ; fork_mode = `Run_immediately
   }
@@ -83,6 +84,10 @@ let rec run config f =
               Some (fun (k : (a, _) Effect.Deep.continuation) ->
                 log (Run_curl invocation);
                 Effect.Deep.continue k config.curl_result)
+            | Freight_effect.Run_curl_verbose invocation ->
+              Some (fun (k : (a, _) Effect.Deep.continuation) ->
+                log (Run_curl_verbose invocation);
+                Effect.Deep.continue k config.curl_verbose_result)
             | Freight_effect.Notify (level, msg) ->
               Some (fun (k : (a, _) Effect.Deep.continuation) ->
                 log (Notify (level, msg));

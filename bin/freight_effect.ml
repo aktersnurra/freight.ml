@@ -33,9 +33,11 @@ type _ Effect.t +=
   | Buffer_dir : buffer_id -> string option Effect.t
   | Cursor : Cursor.t Effect.t
   | Show_scratch : scratch_view -> buffer_id Effect.t
+  | Show_float : scratch_view -> unit Effect.t
   | Update_scratch : buffer_id * scratch_view -> unit Effect.t
   | Set_keymap : buffer_id * string * string -> unit Effect.t
   | Run_curl : Freight.Executor.invocation -> (string, string) result Effect.t
+  | Run_curl_verbose : Freight.Executor.invocation -> (string, string) result Effect.t
   | Notify : notify_level * string -> unit Effect.t
   | Fork : string * (unit -> unit) -> unit Effect.t
   | Load_env : { dir : string; active_env : string option } -> Freight.Env.t Effect.t
@@ -49,6 +51,9 @@ let cursor () = Effect.perform Cursor
 let show_scratch ~name ~filetype ~lines =
   Effect.perform (Show_scratch { name; filetype; lines })
 
+let show_float ~title ~lines =
+  Effect.perform (Show_float { name = title; filetype = "freight"; lines })
+
 let update_scratch buf ~name ~filetype ~lines =
   Effect.perform (Update_scratch (buf, { name; filetype; lines }))
 
@@ -57,6 +62,7 @@ let set_keymap buf ~key ~command =
 
 let load_env ~dir ~active_env = Effect.perform (Load_env { dir; active_env })
 let run_curl invocation = Effect.perform (Run_curl invocation)
+let run_curl_verbose invocation = Effect.perform (Run_curl_verbose invocation)
 let notify level msg = Effect.perform (Notify (level, msg))
 let fork label f = Effect.perform (Fork (label, f))
 let nvim_call method_ params = Effect.perform (Nvim_call (method_, params))

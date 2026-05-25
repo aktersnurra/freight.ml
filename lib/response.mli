@@ -20,3 +20,6 @@ val render_headers : Ast.response -> string list
 
 val render_all : Ast.response -> string list
 (** Status line, headers, blank line, pretty-printed body. Identical to [render]. *)
+
+val render_verbose : string -> string list
+(** Splits raw curl verbose output (stderr ^ stdout) into lines, stripping CR. *)

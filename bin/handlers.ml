@@ -198,7 +198,7 @@ let freight_history state =
   in
   set_buf_keymaps buf;
   Freight_effect.set_keymap buf ~key:"<CR>"
-    ~command:":execute 'FreightViewHistory ' . line('.')<CR>"
+    ~command:":<C-u>execute 'FreightViewHistory ' . line('.')<CR>"
 
 let freight_view_history state line_number =
   let index = line_number - 1 in

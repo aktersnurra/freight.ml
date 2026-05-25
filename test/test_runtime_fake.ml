@@ -33,7 +33,7 @@ let default_config =
   ; fork_mode = `Run_immediately
   }
 
-let run config f =
+let rec run config f =
   let calls = ref [] in
   let log c = calls := c :: !calls in
   let next_buf = ref 100 in

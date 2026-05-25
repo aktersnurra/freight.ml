@@ -61,7 +61,6 @@ let set_keymap ~call buf_id ~key ~command =
 
 let show_float ~call ~lines =
   let buf = call "nvim_create_buf" [ Msgpck.Bool false; Msgpck.Bool true ] in
-  let handle_int = buf_handle_int buf in
   ignore (call "nvim_buf_set_option"
     [ buf; Msgpck.String "buftype"; Msgpck.String "nofile" ]);
   ignore (call "nvim_buf_set_option"
@@ -105,7 +104,12 @@ let show_float ~call ~lines =
       ]
   in
   let win = call "nvim_open_win" [ buf; Msgpck.Bool true; opts ] in
-  let win_id = match win with Msgpck.Int n -> n | _ -> 0 in
+  let win_id =
+    match win with
+    | Msgpck.Int n -> n
+    | Msgpck.Ext (_, s) -> ext_to_int s
+    | _ -> failwith "expected window handle"
+  in
   ignore (call "nvim_buf_set_keymap"
     [ buf
     ; Msgpck.String "n"
@@ -116,4 +120,13 @@ let show_float ~call ~lines =
         ; (Msgpck.String "silent",  Msgpck.Bool true)
         ]
     ]);
-  ignore handle_int
+  ignore (call "nvim_buf_set_keymap"
+    [ buf
+    ; Msgpck.String "n"
+    ; Msgpck.String "g?"
+    ; Msgpck.String ":FreightHelp<CR>"
+    ; Msgpck.Map
+        [ (Msgpck.String "noremap", Msgpck.Bool true)
+        ; (Msgpck.String "silent",  Msgpck.Bool true)
+        ]
+    ])

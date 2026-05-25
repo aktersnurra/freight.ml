@@ -2,7 +2,7 @@ let show_error message =
   ignore
     (Freight_effect.show_scratch
        ~name:"freight://error"
-       ~filetype:"text"
+       ~filetype:"freight"
        ~lines:(Request_view.render_message ~title:"Error" ~body:[ message ]))
 
 let current_source () =
@@ -52,7 +52,7 @@ let freight_env state arg =
   let scratch_buf =
     Freight_effect.show_scratch
       ~name:"freight://env"
-      ~filetype:"text"
+      ~filetype:"freight"
       ~lines:(Request_view.render_env ~active_env:env_name ~pairs ~unresolved)
   in
   set_buf_keymaps scratch_buf
@@ -64,7 +64,7 @@ let freight_inspect state =
     let scratch_buf =
       Freight_effect.show_scratch
         ~name:"freight://error"
-        ~filetype:"text"
+        ~filetype:"freight"
         ~lines:(Request_view.render_parse_error err)
     in
     set_buf_keymaps scratch_buf
@@ -75,7 +75,7 @@ let freight_inspect state =
     let scratch_buf =
       Freight_effect.show_scratch
         ~name:"freight://inspect"
-        ~filetype:"text"
+        ~filetype:"freight"
         ~lines:(Request_view.render_request request invocation)
     in
     set_buf_keymaps scratch_buf
@@ -114,7 +114,7 @@ let freight_run state =
     let loading_buf =
       Freight_effect.show_scratch
         ~name
-        ~filetype:"text"
+        ~filetype:"freight"
         ~lines:[ "Loading\xe2\x80\xa6" ]
     in
     set_buf_keymaps loading_buf;
@@ -124,13 +124,13 @@ let freight_run state =
       (match run_result, verbose_result with
        | Error msg, _ | _, Error msg ->
          Freight_effect.update_scratch loading_buf
-           ~name ~filetype:"text"
+           ~name ~filetype:"freight"
            ~lines:[ "Error: " ^ msg ]
        | Ok raw, Ok verbose_raw ->
          (match Freight.Response.parse_curl_output raw request with
           | Error msg ->
             Freight_effect.update_scratch loading_buf
-              ~name ~filetype:"text"
+              ~name ~filetype:"freight"
               ~lines:[ "Parse error: " ^ msg ]
           | Ok response ->
             let filetype =
@@ -172,14 +172,14 @@ let freight_view state view_name =
            let ft = Freight.Buffer.filetype_of_content_type ct in
            (Freight.Response.render_body response, ft)
          | "Headers" ->
-           (Freight.Response.render_headers response, "text")
+           (Freight.Response.render_headers response, "freight")
          | "Verbose" ->
            let lines =
              match state.State.verbose_output with
              | None -> [ "No verbose output available." ]
              | Some raw -> Freight.Response.render_verbose raw
            in
-           (lines, "text")
+           (lines, "freight")
          | _ ->
            let ct = Freight.Response.detect_content_type response in
            let ft = Freight.Buffer.filetype_of_content_type ct in

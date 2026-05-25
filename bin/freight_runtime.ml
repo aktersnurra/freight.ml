@@ -81,6 +81,10 @@ let rec run : type a. proc_mgr:_ -> sw:_ -> rpc:_ -> (unit -> a) -> a =
                   ~name:view.name ~filetype:view.filetype ~lines:view.lines
               in
               Effect.Deep.continue k buf_id)
+          | Freight_effect.Show_float view ->
+            Some (fun (k : (a, _) Effect.Deep.continuation) ->
+              Scratch.show_float ~call ~lines:view.lines;
+              Effect.Deep.continue k ())
           | Freight_effect.Update_scratch (buf, view) ->
             Some (fun (k : (a, _) Effect.Deep.continuation) ->
               Scratch.update ~call buf

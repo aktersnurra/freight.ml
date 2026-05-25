@@ -81,24 +81,19 @@ let freight_inspect state =
     set_buf_keymaps scratch_buf
 
 let freight_help _state =
-  let buf =
-    Freight_effect.show_scratch
-      ~name:"freight://help"
-      ~filetype:"text"
-      ~lines:
-        [ "Freight Keymaps"
-        ; ""
-        ; "  q        Close window"
-        ; "  g?       Show this help"
-        ; ""
-        ; "  (response buffer only)"
-        ; "  B        Body view"
-        ; "  H        Headers view"
-        ; "  A        All view"
-        ; "  V        Verbose view"
-        ]
-  in
-  set_buf_keymaps buf
+  Freight_effect.show_float ~title:"Freight Help"
+    ~lines:
+      [ "  Keymaps"
+      ; ""
+      ; "  q        Close window"
+      ; "  g?       Show this help"
+      ; ""
+      ; "  (response buffer)"
+      ; "  B        Body view"
+      ; "  H        Headers view"
+      ; "  A        All view"
+      ; "  V        Verbose view"
+      ]
 
 let freight_run state =
   let buf, source, cursor_line = current_source () in

@@ -31,6 +31,7 @@ type _ Effect.t +=
   | Buffer_dir : buffer_id -> string option Effect.t
   | Cursor : Cursor.t Effect.t
   | Show_scratch : scratch_view -> buffer_id Effect.t
+  | Show_float : scratch_view -> unit Effect.t
   | Update_scratch : buffer_id * scratch_view -> unit Effect.t
   | Set_keymap : buffer_id * string * string -> unit Effect.t
   | Run_curl : Freight.Executor.invocation -> (string, string) result Effect.t
@@ -45,6 +46,7 @@ val buffer_lines : buffer_id -> string list
 val buffer_dir : buffer_id -> string option
 val cursor : unit -> Cursor.t
 val show_scratch : name:string -> filetype:string -> lines:string list -> buffer_id
+val show_float : title:string -> lines:string list -> unit
 val update_scratch : buffer_id -> name:string -> filetype:string -> lines:string list -> unit
 val set_keymap : buffer_id -> key:string -> command:string -> unit
 val load_env : dir:string -> active_env:string option -> Freight.Env.t

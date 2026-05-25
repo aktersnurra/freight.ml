@@ -18,3 +18,8 @@ val set_keymap :
   key:string ->
   command:string ->
   unit
+
+val show_float :
+  call:(string -> Msgpck.t list -> Msgpck.t) ->
+  lines:string list ->
+  unit

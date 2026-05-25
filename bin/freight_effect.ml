@@ -33,6 +33,7 @@ type _ Effect.t +=
   | Buffer_dir : buffer_id -> string option Effect.t
   | Cursor : Cursor.t Effect.t
   | Show_scratch : scratch_view -> buffer_id Effect.t
+  | Show_float : scratch_view -> unit Effect.t
   | Update_scratch : buffer_id * scratch_view -> unit Effect.t
   | Set_keymap : buffer_id * string * string -> unit Effect.t
   | Run_curl : Freight.Executor.invocation -> (string, string) result Effect.t
@@ -49,6 +50,9 @@ let cursor () = Effect.perform Cursor
 
 let show_scratch ~name ~filetype ~lines =
   Effect.perform (Show_scratch { name; filetype; lines })
+
+let show_float ~title ~lines =
+  Effect.perform (Show_float { name = title; filetype = "freight"; lines })
 
 let update_scratch buf ~name ~filetype ~lines =
   Effect.perform (Update_scratch (buf, { name; filetype; lines }))

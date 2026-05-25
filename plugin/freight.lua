@@ -11,11 +11,6 @@ end, { desc = "Start the freight RPC process" })
 
 local group = vim.api.nvim_create_augroup("freight_autostart", { clear = true })
 
-vim.api.nvim_create_autocmd("VimEnter", {
-  group = group,
-  callback = function() freight.ensure_started() end,
-})
-
 vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile" }, {
   group = group,
   pattern = { "*.http", "*.rest" },

@@ -52,8 +52,8 @@ The plugin auto-starts the OCaml process when you open a `*.http` or `*.rest` fi
 
 If the binary lives somewhere other than `_build/default/bin/main.exe`, point Neovim at it:
 
-```vim
-let g:freight_executable = '/path/to/main.exe'
+```lua
+vim.g.freight_executable = '/path/to/main.exe'
 ```
 
 ## Commands
@@ -199,6 +199,6 @@ test/
   test_handlers.ml      Handler integration tests via fake effect interpreter
   test_runtime_fake.ml  Deterministic effect interpreter for testing
 
-plugin/freight.vim    Vim command definitions and autostart autocmd
-autoload/freight.vim  Job management and RPC channel helpers
+plugin/freight.lua    Neovim command definitions and autostart autocmd
+lua/freight.lua       Job management and RPC channel helpers
 ```

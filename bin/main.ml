@@ -13,7 +13,13 @@ let register_commands ~call channel =
       | `Optional | `Required ->
         Printf.sprintf "call rpcrequest(%d, '%s', <q-args>)" channel rpc_method
     in
-    let cmd_str = Printf.sprintf "command!%s %s %s" nargs_str name call_str in
+    let cmd_definition = Printf.sprintf "command!%s %s %s" nargs_str name call_str in
+    let cmd_str =
+      Printf.sprintf
+        "if !exists(':%s') | execute \"%s\" | endif"
+        name
+        (String.escaped cmd_definition)
+    in
     ignore (call "nvim_command" [ Msgpck.String cmd_str ])
   in
   cmd "FreightOpen"        `None     "FreightOpen";

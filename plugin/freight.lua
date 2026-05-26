@@ -5,9 +5,60 @@ vim.g.loaded_freight = true
 
 local freight = require("freight")
 
+local function call_rpc(method, args)
+  freight.ensure_started()
+  local channel = freight.channel()
+  if channel <= 0 then
+    return
+  end
+  if args == nil then
+    vim.fn.rpcrequest(channel, method)
+  else
+    vim.fn.rpcrequest(channel, method, args)
+  end
+end
+
 vim.api.nvim_create_user_command("FreightStart", function()
   freight.start()
 end, { desc = "Start the freight RPC process" })
+
+vim.api.nvim_create_user_command("FreightOpen", function()
+  call_rpc("FreightOpen")
+end, { desc = "Open a Freight request scratch buffer" })
+
+vim.api.nvim_create_user_command("FreightRun", function()
+  call_rpc("FreightRun")
+end, { desc = "Run the request under the cursor" })
+
+vim.api.nvim_create_user_command("FreightEnv", function(opts)
+  call_rpc("FreightEnv", opts.args)
+end, { nargs = "?", desc = "Show or select the active Freight environment" })
+
+vim.api.nvim_create_user_command("FreightView", function(opts)
+  call_rpc("FreightView", opts.args)
+end, {
+  nargs = 1,
+  complete = function()
+    return { "Body", "Headers", "All", "Verbose" }
+  end,
+  desc = "Switch the Freight response view",
+})
+
+vim.api.nvim_create_user_command("FreightInspect", function()
+  call_rpc("FreightInspect")
+end, { desc = "Show parsed request details" })
+
+vim.api.nvim_create_user_command("FreightHelp", function()
+  call_rpc("FreightHelp")
+end, { desc = "Show Freight help" })
+
+vim.api.nvim_create_user_command("FreightHistory", function()
+  call_rpc("FreightHistory")
+end, { desc = "Show Freight request history" })
+
+vim.api.nvim_create_user_command("FreightViewHistory", function(opts)
+  call_rpc("FreightViewHistory", opts.args)
+end, { nargs = 1, desc = "Open a Freight history entry" })
 
 local group = vim.api.nvim_create_augroup("freight_autostart", { clear = true })
 

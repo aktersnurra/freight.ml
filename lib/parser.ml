@@ -22,7 +22,7 @@ let split_blocks lines =
         loop ((current_start, List.rev current) :: blocks) [] (line_num + 1) (line_num + 1) rest
     | line :: rest -> loop blocks (line :: current) current_start (line_num + 1) rest
   in
-  loop [] [] 0 0 lines
+  loop [] [] 1 1 lines
   |> List.filter (fun (_, block) -> List.exists (fun line -> trim line <> "") block)
 
 let parse_name line =
@@ -86,18 +86,20 @@ let parse_body lines =
       else Ast.Body_inline (String.concat "\n" body_lines)
   | _ -> Ast.Body_inline (String.concat "\n" body_lines)
 
-let parse_block block =
-  let rec skip_leading_metadata name = function
-    | [] -> make_error "missing request line"
-    | line :: rest when trim line = "" -> skip_leading_metadata name rest
+let parse_block ~start_line block =
+  let rec skip_leading_metadata line_number name = function
+    | [] -> make_error ~line:line_number "missing request line"
+    | line :: rest when trim line = "" ->
+        skip_leading_metadata (line_number + 1) name rest
     | line :: rest -> (
         match parse_name line with
-        | Some parsed_name -> skip_leading_metadata (Some parsed_name) rest
+        | Some parsed_name ->
+            skip_leading_metadata (line_number + 1) (Some parsed_name) rest
         | None when starts_with ~prefix:"#" (trim line) ->
-            skip_leading_metadata name rest
+            skip_leading_metadata (line_number + 1) name rest
         | None -> (
             match parse_request_line line with
-            | Error message -> make_error ~snippet:line message
+            | Error message -> make_error ~line:line_number ~snippet:line message
             | Ok (method_, url) ->
                 let header_lines, body_lines = split_at_blank rest in
                 let headers = List.filter_map parse_header header_lines in
@@ -110,14 +112,14 @@ let parse_block block =
                     body = parse_body body_lines;
                   }))
   in
-  skip_leading_metadata None block
+  skip_leading_metadata start_line None block
 
 let parse_source source =
   let blocks = split_lines source |> split_blocks in
   let rec loop requests = function
     | [] -> Ok { Ast.requests = List.rev (List.map snd requests); path = "" }
     | (start, block) :: rest -> (
-        match parse_block block with
+        match parse_block ~start_line:start block with
         | Ok request -> loop ((start, request) :: requests) rest
         | Error error -> Error error)
   in
@@ -128,7 +130,7 @@ let parse_source_with_lines source =
   let rec loop acc = function
     | [] -> Ok (List.rev acc)
     | (start, block) :: rest -> (
-        match parse_block block with
+        match parse_block ~start_line:start block with
         | Ok request -> loop ((start, request) :: acc) rest
         | Error error -> Error error)
   in

@@ -45,6 +45,18 @@ let test_parse_request_line_missing_url _ =
   let error = parse_error "GET\n" in
   assert_equal "missing request URL" error.message
 
+let test_parse_error_reports_request_line_after_metadata _ =
+  let error = parse_error "# comment\n# @name broken\nGET\n" in
+  assert_equal "missing request URL" error.message;
+  assert_equal 3 error.line;
+  assert_equal "GET" error.snippet
+
+let test_parse_error_reports_request_line_in_second_block _ =
+  let error = parse_error "GET https://one.test\n\n###\n# comment\nPOST\n" in
+  assert_equal "missing request URL" error.message;
+  assert_equal 5 error.line;
+  assert_equal "POST" error.snippet
+
 let test_parse_body_file _ =
   let file = parse_ok "PUT https://api.example.com/upload\n\n< fixtures/payload.json\n" in
   match file.requests with
@@ -449,6 +461,10 @@ let suite =
          "parse_named_json_request" >:: test_parse_named_json_request;
          "parse_two_requests_with_separator" >:: test_parse_two_requests_with_separator;
          "parse_request_line_missing_url" >:: test_parse_request_line_missing_url;
+         "parse error reports request line after metadata"
+         >:: test_parse_error_reports_request_line_after_metadata;
+         "parse error reports request line in second block"
+         >:: test_parse_error_reports_request_line_in_second_block;
          "parse_body_file" >:: test_parse_body_file;
          "parse_crlf_and_trailing_whitespace"
          >:: test_parse_crlf_and_trailing_whitespace;

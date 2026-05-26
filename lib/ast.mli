@@ -43,6 +43,31 @@ type http_file = {
   path : string;
 }
 
+type validation_error =
+  | Empty_url
+  | Empty_header_name
+  | Invalid_status
+  | Negative_duration
+
+val make_request :
+  ?name:string ->
+  method_:method_ ->
+  url:string ->
+  headers:(string * string) list ->
+  body:body ->
+  unit ->
+  (request, validation_error) result
+
+val make_response :
+  status:int ->
+  status_text:string ->
+  headers:(string * string) list ->
+  body:string ->
+  duration_ms:int ->
+  request:request ->
+  unit ->
+  (response, validation_error) result
+
 val method_to_string : method_ -> string
 val method_of_string : string -> method_
 val apply_host_header : request -> request

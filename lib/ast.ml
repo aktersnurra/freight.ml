@@ -43,6 +43,34 @@ type http_file = {
   path : string;
 }
 
+type validation_error =
+  | Empty_url
+  | Empty_header_name
+  | Invalid_status
+  | Negative_duration
+
+let has_empty_header_name headers =
+  List.exists (fun (name, _) -> String.trim name = "") headers
+
+let validate_request_fields ~url ~headers =
+  if String.trim url = "" then Error Empty_url
+  else if has_empty_header_name headers then Error Empty_header_name
+  else Ok ()
+
+let make_request ?name ~method_ ~url ~headers ~body () =
+  match validate_request_fields ~url ~headers with
+  | Error error -> Error error
+  | Ok () -> Ok { name; method_; url; headers; body }
+
+let make_response ~status ~status_text ~headers ~body ~duration_ms ~request () =
+  if status < 100 || status > 599 then Error Invalid_status
+  else if duration_ms < 0 then Error Negative_duration
+  else if has_empty_header_name headers then Error Empty_header_name
+  else
+    match validate_request_fields ~url:request.url ~headers:request.headers with
+    | Error error -> Error error
+    | Ok () -> Ok { status; status_text; headers; body; duration_ms; request }
+
 let method_to_string = function
   | Get -> "GET"
   | Post -> "POST"

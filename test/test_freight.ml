@@ -8,6 +8,224 @@ let test_method_of_string _ =
   assert_equal (Freight.Ast.Custom "PROPFIND")
     (Freight.Ast.method_of_string "PROPFIND")
 
+let test_make_request_rejects_empty_url _ =
+  match
+    Freight.Ast.make_request
+      ?name:None
+      ~method_:Freight.Ast.Get
+      ~url:""
+      ~headers:[]
+      ~body:Freight.Ast.Body_none
+      ()
+  with
+  | Error Freight.Ast.Empty_url -> ()
+  | Ok _ -> assert_failure "expected Empty_url"
+  | Error _ -> assert_failure "expected Empty_url"
+
+let test_make_response_rejects_invalid_status _ =
+  let request =
+    {
+      Freight.Ast.name = None;
+      method_ = Freight.Ast.Get;
+      url = "https://example.test";
+      headers = [];
+      body = Freight.Ast.Body_none;
+    }
+  in
+  match
+    Freight.Ast.make_response
+      ~status:99
+      ~status_text:"Invalid"
+      ~headers:[]
+      ~body:""
+      ~duration_ms:0
+      ~request
+      ()
+  with
+  | Error Freight.Ast.Invalid_status -> ()
+  | Ok _ -> assert_failure "expected Invalid_status"
+  | Error _ -> assert_failure "expected Invalid_status"
+
+let test_make_response_rejects_negative_duration _ =
+  let request =
+    {
+      Freight.Ast.name = None;
+      method_ = Freight.Ast.Get;
+      url = "https://example.test";
+      headers = [];
+      body = Freight.Ast.Body_none;
+    }
+  in
+  match
+    Freight.Ast.make_response
+      ~status:200
+      ~status_text:"OK"
+      ~headers:[]
+      ~body:""
+      ~duration_ms:(-1)
+      ~request
+      ()
+  with
+  | Error Freight.Ast.Negative_duration -> ()
+  | Ok _ -> assert_failure "expected Negative_duration"
+  | Error _ -> assert_failure "expected Negative_duration"
+
+let assert_empty_url = function
+  | Error Freight.Ast.Empty_url -> ()
+  | Ok _ -> assert_failure "expected Empty_url"
+  | Error _ -> assert_failure "expected Empty_url"
+
+let test_make_response_rejects_invalid_request_url _ =
+  let request =
+    {
+      Freight.Ast.name = None;
+      method_ = Freight.Ast.Get;
+      url = "";
+      headers = [];
+      body = Freight.Ast.Body_none;
+    }
+  in
+  assert_empty_url
+    (Freight.Ast.make_response
+       ~status:200
+       ~status_text:"OK"
+       ~headers:[]
+       ~body:""
+       ~duration_ms:0
+       ~request
+       ())
+
+let assert_empty_header_name = function
+  | Error Freight.Ast.Empty_header_name -> ()
+  | Ok _ -> assert_failure "expected Empty_header_name"
+  | Error _ -> assert_failure "expected Empty_header_name"
+
+let test_make_request_rejects_empty_header_name _ =
+  assert_empty_header_name
+    (Freight.Ast.make_request
+       ?name:None
+       ~method_:Freight.Ast.Get
+       ~url:"https://example.test"
+       ~headers:[ ("", "value") ]
+       ~body:Freight.Ast.Body_none
+       ());
+  assert_empty_header_name
+    (Freight.Ast.make_request
+       ?name:None
+       ~method_:Freight.Ast.Get
+       ~url:"https://example.test"
+       ~headers:[ (" \t", "value") ]
+       ~body:Freight.Ast.Body_none
+       ())
+
+let test_make_response_rejects_empty_header_name _ =
+  let request =
+    {
+      Freight.Ast.name = None;
+      method_ = Freight.Ast.Get;
+      url = "https://example.test";
+      headers = [];
+      body = Freight.Ast.Body_none;
+    }
+  in
+  assert_empty_header_name
+    (Freight.Ast.make_response
+       ~status:200
+       ~status_text:"OK"
+       ~headers:[ ("", "value") ]
+       ~body:""
+       ~duration_ms:0
+       ~request
+       ());
+  assert_empty_header_name
+    (Freight.Ast.make_response
+       ~status:200
+       ~status_text:"OK"
+       ~headers:[ (" \t", "value") ]
+       ~body:""
+       ~duration_ms:0
+       ~request
+       ())
+
+let test_make_response_rejects_invalid_request_header_name _ =
+  let make_response request =
+    Freight.Ast.make_response
+      ~status:200
+      ~status_text:"OK"
+      ~headers:[]
+      ~body:""
+      ~duration_ms:0
+      ~request
+      ()
+  in
+  assert_empty_header_name
+    (make_response
+       {
+         Freight.Ast.name = None;
+         method_ = Freight.Ast.Get;
+         url = "https://example.test";
+         headers = [ ("", "value") ];
+         body = Freight.Ast.Body_none;
+       });
+  assert_empty_header_name
+    (make_response
+       {
+         Freight.Ast.name = None;
+         method_ = Freight.Ast.Get;
+         url = "https://example.test";
+         headers = [ (" \t", "value") ];
+         body = Freight.Ast.Body_none;
+       })
+
+let test_make_request_preserves_fields _ =
+  let headers = [ ("Accept", "application/json"); ("X-Trace", "abc") ] in
+  match
+    Freight.Ast.make_request
+      ~name:"list-users"
+      ~method_:Freight.Ast.Post
+      ~url:" https://example.test/users "
+      ~headers
+      ~body:(Freight.Ast.Body_inline "{ }")
+      ()
+  with
+  | Ok request ->
+      assert_equal (Some "list-users") request.name;
+      assert_equal Freight.Ast.Post request.method_;
+      assert_equal " https://example.test/users " request.url;
+      assert_equal headers request.headers;
+      assert_equal (Freight.Ast.Body_inline "{ }") request.body
+  | Error _ -> assert_failure "expected valid request"
+
+let test_make_response_preserves_fields _ =
+  let request =
+    {
+      Freight.Ast.name = Some "list-users";
+      method_ = Freight.Ast.Get;
+      url = "https://example.test/users";
+      headers = [ ("Accept", "application/json") ];
+      body = Freight.Ast.Body_none;
+    }
+  in
+  let headers = [ ("Content-Type", "application/json"); ("X-Trace", "abc") ] in
+  match
+    Freight.Ast.make_response
+      ~status:201
+      ~status_text:" Created "
+      ~headers
+      ~body:"{\"ok\":true}"
+      ~duration_ms:123
+      ~request
+      ()
+  with
+  | Ok response ->
+      assert_equal 201 response.status;
+      assert_equal " Created " response.status_text;
+      assert_equal headers response.headers;
+      assert_equal "{\"ok\":true}" response.body;
+      assert_equal 123 response.duration_ms;
+      assert_equal request response.request
+  | Error _ -> assert_failure "expected valid response"
+
 let parse_ok source =
   match Freight.Parser.parse_string source with
   | Ok file -> file
@@ -453,6 +671,19 @@ let suite =
   >::: [
          "method_to_string" >:: test_method_to_string;
          "method_of_string" >:: test_method_of_string;
+         "make_request rejects empty url" >:: test_make_request_rejects_empty_url;
+         "make_response rejects invalid status" >:: test_make_response_rejects_invalid_status;
+         "make_response rejects negative duration" >:: test_make_response_rejects_negative_duration;
+         "make_response rejects invalid request url"
+         >:: test_make_response_rejects_invalid_request_url;
+         "make_request rejects empty header name"
+         >:: test_make_request_rejects_empty_header_name;
+         "make_response rejects empty header name"
+         >:: test_make_response_rejects_empty_header_name;
+         "make_response rejects invalid request header name"
+         >:: test_make_response_rejects_invalid_request_header_name;
+         "make_request preserves fields" >:: test_make_request_preserves_fields;
+         "make_response preserves fields" >:: test_make_response_preserves_fields;
          "apply_host_header_relative_url" >:: test_apply_host_header_relative_url;
          "apply_host_header_trailing_slash" >:: test_apply_host_header_trailing_slash;
          "apply_host_header_absolute_url_unchanged" >:: test_apply_host_header_absolute_url_unchanged;

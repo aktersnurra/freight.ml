@@ -6,7 +6,7 @@ A Neovim HTTP client plugin written in OCaml. Parses JetBrains-style `.http` fil
 
 ## Status
 
-The core library, command shell, and HTTP execution are implemented. `:FreightRun` parses the request at cursor, substitutes environment variables, runs curl in the background, and renders the response in a scratch buffer with `B`/`H`/`A` keymaps to toggle between body, headers, and full views.
+The core library, command shell, and HTTP execution are implemented. `:FreightRun` parses the request at cursor, substitutes environment variables, runs curl in the background, and renders the response in a scratch buffer with `B`/`H`/`A`/`V` keymaps to toggle between body, headers, full, and verbose views.
 
 ## Requirements
 
@@ -59,13 +59,16 @@ vim.g.freight_executable = '/path/to/main.exe'
 ## Commands
 
 | Command | Description |
-|---|---|
+| --- | --- |
 | `:FreightStart` | Start the plugin process manually |
-| `:FreightOpen` | Open a scratch buffer with `filetype=http` for writing requests |
+| `:FreightOpen` | Open a scratch request buffer |
 | `:FreightRun` | Parse the request at cursor, execute curl in the background, render the response |
-| `:FreightEnv [name]` | Set the active environment (e.g. `:FreightEnv staging`). Omit the name to clear it |
+| `:FreightEnv [name]` | Show environment variables, or switch to the named environment |
 | `:FreightInspect` | Show the curl metadata for the request at cursor |
-| `:FreightView <Body\|Headers\|All>` | Switch the response buffer view (also mapped to `B`, `H`, `A` keys) |
+| `:FreightView <Body\|Headers\|All\|Verbose>` | Switch the response buffer view (also mapped to `B`, `H`, `A`, `V` keys) |
+| `:FreightHelp` | Show Freight buffer-local help and keymaps |
+| `:FreightHistory` | Show recent request history |
+| `:FreightViewHistory <index>` | Open a response from request history |
 
 ## HTTP file format
 

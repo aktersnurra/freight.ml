@@ -255,6 +255,29 @@ let test_freight_run_all_groups_results _ =
   assert_bool "enter keymap set"
     (has_set_keymap ~key:"<CR>" calls)
 
+let test_freight_run_all_groups_http_errors_as_failed _ =
+  let raw_response =
+    "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\n\r\nbad\n400\n0.010"
+  in
+  let state = State.create () in
+  let config =
+    { Test_runtime_fake.default_config with
+      buffer_lines = [ "POST https://example.com/post" ]
+    ; curl_result = Ok raw_response
+    ; fork_mode = `Run_immediately
+    }
+  in
+  let (), calls =
+    Test_runtime_fake.run config @@ fun () ->
+      Handlers.freight_run_all state
+  in
+  assert_bool "400 is stored as failure"
+    (match state.State.run_all_results with
+     | [ State.Run_all_failure _ ] -> true
+     | _ -> false);
+  assert_bool "summary counts HTTP error as failed"
+    (has_update_scratch_line "Run all complete: 0 succeeded, 1 failed" calls)
+
 let test_freight_view_run_all_success _ =
   let request =
     { Freight.Ast.name = None
@@ -488,6 +511,7 @@ let suite =
     ; "freight_run success" >:: test_freight_run_success
     ; "freight_run_all runs every request" >:: test_freight_run_all_runs_every_request
     ; "freight_run_all groups results" >:: test_freight_run_all_groups_results
+    ; "freight_run_all groups HTTP errors as failed" >:: test_freight_run_all_groups_http_errors_as_failed
     ; "freight_view_run_all success" >:: test_freight_view_run_all_success
     ; "freight_view_run_all failure" >:: test_freight_view_run_all_failure
     ; "freight_run parse error" >:: test_freight_run_parse_error

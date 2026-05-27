@@ -262,10 +262,21 @@ let freight_run_all state =
                results :=
                  State.Run_all_failure { line_number; request; message } :: !results
              | Ok response ->
-               record_response state request response "" loading_buf name;
-               results :=
-                 State.Run_all_success { line_number; request; response; verbose = "" }
-                 :: !results))
+               if response.Freight.Ast.status >= 400 then
+                 results :=
+                   State.Run_all_failure
+                     { line_number
+                     ; request
+                     ; message =
+                         Printf.sprintf "%d %s" response.status response.status_text
+                     }
+                   :: !results
+               else begin
+                 record_response state request response "" loading_buf name;
+                 results :=
+                   State.Run_all_success { line_number; request; response; verbose = "" }
+                   :: !results
+               end))
         requests;
       state.State.run_all_results <- List.rev !results;
       Freight_effect.update_scratch loading_buf ~name ~filetype:"freight"

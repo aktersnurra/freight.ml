@@ -64,7 +64,7 @@ vim.g.freight_executable = '/path/to/main.exe'
 | `:FreightStart` | Start the plugin process manually |
 | `:FreightOpen` | Open a scratch request buffer |
 | `:FreightRun` | Parse the request at cursor, execute curl in the background, render the response |
-| `:FreightEnv [name]` | Show environment variables, switch to the named environment, or open a Telescope picker when no name is given |
+| `:FreightEnv [name]` | Switch to the named environment, or open a Telescope picker when no name is given |
 | `:FreightInspect` | Show the curl metadata for the request at cursor |
 | `:FreightView <Body\|Headers\|All\|Verbose>` | Switch the clean scratch response buffer between body, sectioned headers, sectioned all, and verbose curl output (also mapped to `B`, `H`, `A`, `V` keys) |
 | `:FreightHelp` | Show Freight buffer-local help and keymaps |
@@ -198,7 +198,7 @@ bin/        Neovim plugin executable
   state.ml            Mutable plugin state
 
 test/
-  test_freight.ml       OUnit2 example-based tests (38 tests)
+  test_freight.ml       OUnit2 example-based tests (51 tests)
   test_qcheck.ml        QCheck2 property-based tests (30 properties)
   test_handlers.ml      Handler integration tests via fake effect interpreter
   test_runtime_fake.ml  Deterministic effect interpreter for testing

@@ -24,6 +24,20 @@ let set_buf_keymaps buf =
   Freight_effect.set_keymap buf ~key:"q" ~command:":close<CR>";
   Freight_effect.set_keymap buf ~key:"g?" ~command:":FreightHelp<CR>"
 
+let set_current_window_chrome () =
+  let set name value =
+    ignore
+      (Freight_effect.nvim_call "nvim_set_option_value"
+         [ Msgpck.String name
+         ; value
+         ; Msgpck.Map [ (Msgpck.String "scope", Msgpck.String "local") ]
+         ])
+  in
+  set "number" (Msgpck.Bool false);
+  set "relativenumber" (Msgpck.Bool false);
+  set "signcolumn" (Msgpck.String "no");
+  set "foldcolumn" (Msgpck.String "0")
+
 let freight_open _state =
   let buf =
     Freight_effect.show_scratch
@@ -222,7 +236,8 @@ let freight_view_history state line_number =
        Freight_effect.update_scratch buf ~name:buf_name ~filetype
          ~lines:(Freight.Response.render response);
        ignore (Freight_effect.nvim_call "nvim_command"
-         [ Msgpck.String (Printf.sprintf "vsplit | buffer %d" buf) ])
+         [ Msgpck.String (Printf.sprintf "vsplit | buffer %d" buf) ]);
+       set_current_window_chrome ()
      | _ ->
        let buf =
          Freight_effect.show_scratch ~name ~filetype

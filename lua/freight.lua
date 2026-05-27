@@ -95,6 +95,14 @@ local function env_file_entries(dir)
   return entries
 end
 
+function M.freight_env_command(arg)
+  if arg == nil or arg == "" then
+    M.select_env()
+  else
+    M.call_rpc("FreightEnv", arg)
+  end
+end
+
 function M.select_env()
   local ok_builtin, _ = pcall(require, "telescope.builtin")
   local ok_pickers, pickers = pcall(require, "telescope.pickers")

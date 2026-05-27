@@ -14,6 +14,7 @@ The core library, command shell, and HTTP execution are implemented. `:FreightRu
 - OCaml >= 5.1
 - dune >= 3.21
 - curl (runtime)
+- Telescope.nvim (optional; required for `:FreightEnv` without an argument)
 - opam packages: `angstrom`, `yojson`, `re`, `msgpck`, `eio`, `eio_main`, `eio_posix`
 
 ## Installation
@@ -63,9 +64,9 @@ vim.g.freight_executable = '/path/to/main.exe'
 | `:FreightStart` | Start the plugin process manually |
 | `:FreightOpen` | Open a scratch request buffer |
 | `:FreightRun` | Parse the request at cursor, execute curl in the background, render the response |
-| `:FreightEnv [name]` | Show environment variables, or switch to the named environment |
+| `:FreightEnv [name]` | Show environment variables, switch to the named environment, or open a Telescope picker when no name is given |
 | `:FreightInspect` | Show the curl metadata for the request at cursor |
-| `:FreightView <Body\|Headers\|All\|Verbose>` | Switch the response buffer view (also mapped to `B`, `H`, `A`, `V` keys) |
+| `:FreightView <Body\|Headers\|All\|Verbose>` | Switch the clean scratch response buffer between body, sectioned headers, sectioned all, and verbose curl output (also mapped to `B`, `H`, `A`, `V` keys) |
 | `:FreightHelp` | Show Freight buffer-local help and keymaps |
 | `:FreightHistory` | Show recent request history |
 | `:FreightViewHistory <index>` | Open a response from request history |

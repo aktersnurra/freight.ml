@@ -7,6 +7,16 @@ let buf_handle_int buf =
   | Msgpck.Ext (_, s) -> ext_to_int s
   | _ -> failwith "expected buffer handle"
 
+let set_window_chrome ~call =
+  let set name value =
+    ignore (call "nvim_set_option_value"
+      [ Msgpck.String name; value; Msgpck.Map [ (Msgpck.String "scope", Msgpck.String "local") ] ])
+  in
+  set "number" (Msgpck.Bool false);
+  set "relativenumber" (Msgpck.Bool false);
+  set "signcolumn" (Msgpck.String "no");
+  set "foldcolumn" (Msgpck.String "0")
+
 let show ~call ~name ~filetype ~lines =
   let buf = call "nvim_create_buf" [ Msgpck.Bool false; Msgpck.Bool true ] in
   let handle_int = buf_handle_int buf in
@@ -29,6 +39,7 @@ let show ~call ~name ~filetype ~lines =
     [ buf; Msgpck.String "modifiable"; Msgpck.Bool false ]);
   ignore (call "nvim_command"
     [ Msgpck.String (Printf.sprintf "vsplit | buffer %d" handle_int) ]);
+  set_window_chrome ~call;
   handle_int
 
 let update ~call buf_id ~filetype ~lines =

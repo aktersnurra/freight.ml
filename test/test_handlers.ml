@@ -20,6 +20,20 @@ let has_run_curl calls =
     (function Test_runtime_fake.Run_curl _ -> true | _ -> false)
     calls
 
+let count_run_curl calls =
+  List.fold_left
+    (fun count -> function
+      | Test_runtime_fake.Run_curl _ -> count + 1
+      | _ -> count)
+    0 calls
+
+let count_run_curl_verbose calls =
+  List.fold_left
+    (fun count -> function
+      | Test_runtime_fake.Run_curl_verbose _ -> count + 1
+      | _ -> count)
+    0 calls
+
 let has_fork calls =
   has_call
     (function Test_runtime_fake.Fork _ -> true | _ -> false)
@@ -162,6 +176,54 @@ let test_freight_run_success _ =
   assert_bool "B keymap set" (has_set_keymap ~key:"B" calls);
   assert_bool "H keymap set" (has_set_keymap ~key:"H" calls);
   assert_bool "A keymap set" (has_set_keymap ~key:"A" calls)
+
+let test_freight_run_all_runs_every_request _ =
+  let curl_output =
+    "HTTP/1.1 200 OK\r\n\
+     Content-Type: application/json\r\n\
+     \r\n\
+     {\"ok\":true}\n\
+     200\n\
+     0.042"
+  in
+  let config =
+    { Test_runtime_fake.default_config with
+      buffer_lines =
+        [ "GET https://httpbin.org/get"
+        ; ""
+        ; "###"
+        ; "POST /post"
+        ; "Host: https://httpbin.org/"
+        ; "Content-Type: application/json"
+        ; ""
+        ; "{\"message\": \"hello from freight\"}"
+        ]
+    ; curl_result = Ok curl_output
+    ; curl_verbose_result = Ok curl_output
+    ; fork_mode = `Run_immediately
+    }
+  in
+  let (), calls =
+    Test_runtime_fake.run config @@ fun () ->
+      Handlers.freight_run_all (State.create ())
+  in
+  assert_equal 2 (count_run_curl calls);
+  assert_equal 0 (count_run_curl_verbose calls);
+  assert_bool "second request uses absolute url"
+    (has_call
+       (function
+        | Test_runtime_fake.Run_curl invocation ->
+          List.mem "https://httpbin.org/post" invocation.Freight.Executor.args
+        | _ -> false)
+       calls);
+  assert_bool "no raw relative URL reaches curl"
+    (not
+       (has_call
+          (function
+           | Test_runtime_fake.Run_curl invocation ->
+             List.mem "/post" invocation.Freight.Executor.args
+           | _ -> false)
+          calls))
 
 let test_freight_run_parse_error _ =
   let config =
@@ -347,6 +409,7 @@ let suite =
     ; "freight_run no request" >:: test_freight_run_no_request
     ; "freight_run curl error" >:: test_freight_run_curl_error
     ; "freight_run success" >:: test_freight_run_success
+    ; "freight_run_all runs every request" >:: test_freight_run_all_runs_every_request
     ; "freight_run parse error" >:: test_freight_run_parse_error
     ; "freight_run appends history" >:: test_freight_run_appends_history
     ; "freight_view no response" >:: test_freight_view_no_response

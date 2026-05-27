@@ -113,6 +113,22 @@ let freight_help _state =
       ; "  V        Verbose view"
       ]
 
+let record_response state request response verbose_raw response_buf response_buf_name =
+  let req_name = Option.value request.Freight.Ast.name ~default:"" in
+  state.State.env <-
+    Freight.Chaining.inject ~name:req_name response state.State.env;
+  state.State.last_response <- Some response;
+  state.State.response_buf <- Some response_buf;
+  state.State.response_buf_name <- Some response_buf_name;
+  state.State.verbose_output <- Some verbose_raw;
+  State.push_history state request response verbose_raw
+
+let set_response_keymaps buf =
+  Freight_effect.set_keymap buf ~key:"B" ~command:":FreightView Body<CR>";
+  Freight_effect.set_keymap buf ~key:"H" ~command:":FreightView Headers<CR>";
+  Freight_effect.set_keymap buf ~key:"A" ~command:":FreightView All<CR>";
+  Freight_effect.set_keymap buf ~key:"V" ~command:":FreightView Verbose<CR>"
+
 let freight_run state =
   let buf, source, cursor_line = current_source () in
   match resolve_request state source cursor_line buf with
@@ -155,25 +171,67 @@ let freight_run state =
               Freight.Buffer.filetype_of_content_type
                 (Freight.Response.detect_content_type response)
             in
-            let req_name = Option.value request.Freight.Ast.name ~default:"" in
-            state.State.env <-
-              Freight.Chaining.inject ~name:req_name response state.State.env;
-            state.State.last_response <- Some response;
-            state.State.response_buf <- Some loading_buf;
-            state.State.response_buf_name <- Some name;
-            state.State.verbose_output <- Some verbose_raw;
-            State.push_history state request response verbose_raw;
+            record_response state request response verbose_raw loading_buf name;
             Freight_effect.update_scratch loading_buf
               ~name ~filetype
               ~lines:(Freight.Response.render response);
-            Freight_effect.set_keymap loading_buf
-              ~key:"B" ~command:":FreightView Body<CR>";
-            Freight_effect.set_keymap loading_buf
-              ~key:"H" ~command:":FreightView Headers<CR>";
-            Freight_effect.set_keymap loading_buf
-              ~key:"A" ~command:":FreightView All<CR>";
-            Freight_effect.set_keymap loading_buf
-              ~key:"V" ~command:":FreightView Verbose<CR>"))
+            set_response_keymaps loading_buf))
+
+let freight_run_all state =
+  let buf, source, _cursor_line = current_source () in
+  let env = resolve_env state buf in
+  match Freight.Parser.parse_string source with
+  | Error err ->
+    let scratch_buf =
+      Freight_effect.show_scratch
+        ~name:"freight://error"
+        ~filetype:"freight"
+        ~lines:(Request_view.render_parse_error err)
+    in
+    set_buf_keymaps scratch_buf
+  | Ok { Freight.Ast.requests = []; _ } ->
+    show_error "No requests found in buffer."
+  | Ok file ->
+    let requests =
+      List.map
+        (fun request ->
+          request
+          |> Freight.Resolve.substitute_request env
+          |> Freight.Ast.apply_host_header)
+        file.Freight.Ast.requests
+    in
+    let name = "freight://run-all" in
+    let loading_buf =
+      Freight_effect.show_scratch
+        ~name
+        ~filetype:"freight"
+        ~lines:[ Printf.sprintf "Running %d requests…" (List.length requests) ]
+    in
+    set_buf_keymaps loading_buf;
+    Freight_effect.fork "FreightRunAll" @@ fun () ->
+      let successes = ref 0 in
+      let failures = ref [] in
+      List.iteri
+        (fun index request ->
+          let invocation = Freight.Executor.to_curl request in
+          match Freight_effect.run_curl invocation with
+          | Error msg ->
+            failures := Printf.sprintf "%d. %s" (index + 1) msg :: !failures
+          | Ok raw ->
+            (match Freight.Response.parse_curl_output raw request with
+             | Error msg ->
+               failures := Printf.sprintf "%d. %s" (index + 1) msg :: !failures
+             | Ok response ->
+               incr successes;
+               record_response state request response "" loading_buf name))
+        requests;
+      let failure_lines = List.rev !failures in
+      let lines =
+        [ Printf.sprintf "Run all complete: %d/%d succeeded" !successes
+            (List.length requests) ]
+        @ (if failure_lines = [] then [] else "" :: "Failures" :: failure_lines)
+      in
+      Freight_effect.update_scratch loading_buf ~name ~filetype:"freight" ~lines
 
 let freight_view state view_name =
   match state.State.last_response with

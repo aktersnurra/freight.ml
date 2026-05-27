@@ -21,6 +21,10 @@ vim.api.nvim_create_user_command("FreightRun", function()
   call_rpc("FreightRun")
 end, { desc = "Run the request under the cursor" })
 
+vim.api.nvim_create_user_command("FreightRunAll", function()
+  call_rpc("FreightRunAll")
+end, { desc = "Run every request in the current buffer" })
+
 vim.api.nvim_create_user_command("FreightEnv", function(opts)
   if opts.args == "" then
     freight.select_env()

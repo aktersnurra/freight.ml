@@ -417,8 +417,32 @@ let test_to_curl_applies_host_header _ =
   in
   let invocation = Freight.Executor.to_curl request in
   assert_bool "uses absolute url" (List.mem "https://httpbin.org/post" invocation.args);
+  assert_bool "does not use raw relative url" (not (List.mem "/post" invocation.args));
   assert_bool "removes Host header"
     (not (List.mem "Host: https://httpbin.org/" invocation.args))
+
+let test_second_parsed_request_applies_host_header _ =
+  let source =
+    String.concat "\n"
+      [ "GET https://httpbin.org/get"
+      ; ""
+      ; "###"
+      ; "POST /post"
+      ; "Host: https://httpbin.org/"
+      ; "Content-Type: application/json"
+      ; ""
+      ; "{\"message\": \"hello from freight\"}"
+      ]
+  in
+  let file = parse_ok source in
+  match file.requests with
+  | [ _; request ] ->
+      let invocation = Freight.Executor.to_curl request in
+      assert_bool "uses absolute url" (List.mem "https://httpbin.org/post" invocation.args);
+      assert_bool "does not use raw relative url" (not (List.mem "/post" invocation.args));
+      assert_bool "removes Host header"
+        (not (List.mem "Host: https://httpbin.org/" invocation.args))
+  | _ -> assert_failure "expected two requests"
 
 let response_request =
   {
@@ -764,6 +788,8 @@ let suite =
          "to_curl_file_body" >:: test_to_curl_file_body;
          "to_curl_put_file_body" >:: test_to_curl_put_file_body;
          "to_curl_applies_host_header" >:: test_to_curl_applies_host_header;
+         "second_parsed_request_applies_host_header"
+         >:: test_second_parsed_request_applies_host_header;
          "parse_curl_output" >:: test_parse_curl_output;
          "parse_curl_output_uses_last_header_block"
          >:: test_parse_curl_output_uses_last_header_block;

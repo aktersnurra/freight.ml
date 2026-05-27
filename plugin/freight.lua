@@ -6,16 +6,7 @@ vim.g.loaded_freight = true
 local freight = require("freight")
 
 local function call_rpc(method, args)
-  freight.ensure_started()
-  local channel = freight.channel()
-  if channel <= 0 then
-    return
-  end
-  if args == nil then
-    vim.fn.rpcrequest(channel, method)
-  else
-    vim.fn.rpcrequest(channel, method, args)
-  end
+  freight.call_rpc(method, args)
 end
 
 vim.api.nvim_create_user_command("FreightStart", function()
@@ -31,7 +22,11 @@ vim.api.nvim_create_user_command("FreightRun", function()
 end, { desc = "Run the request under the cursor" })
 
 vim.api.nvim_create_user_command("FreightEnv", function(opts)
-  call_rpc("FreightEnv", opts.args)
+  if opts.args == "" then
+    freight.select_env()
+  else
+    freight.call_rpc("FreightEnv", opts.args)
+  end
 end, { nargs = "?", desc = "Show or select the active Freight environment" })
 
 vim.api.nvim_create_user_command("FreightView", function(opts)

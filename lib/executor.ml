@@ -14,6 +14,7 @@ let body_args method_ = function
       | _ -> [ "--data-binary"; "@" ^ path ])
 
 let to_curl request =
+  let request = Ast.apply_host_header request in
   let method_ = Ast.method_to_string request.Ast.method_ in
   let headers = List.concat_map header_arg request.headers in
   let args =

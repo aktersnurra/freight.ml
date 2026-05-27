@@ -10,7 +10,7 @@ let register_commands ~call channel =
       match (name, nargs) with
       | "FreightEnv", `Optional ->
         Printf.sprintf
-          "if empty(<q-args>) | lua require('freight').select_env() | else | call rpcrequest(%d, '%s', <q-args>) | endif"
+          "if empty('<q-args>') | lua require('freight').select_env() | else | call rpcrequest(%d, '%s', <q-args>) | endif"
           channel rpc_method
       | _, `None ->
         Printf.sprintf "call rpcrequest(%d, '%s')" channel rpc_method

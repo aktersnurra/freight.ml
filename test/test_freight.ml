@@ -404,6 +404,22 @@ let test_to_curl_put_file_body _ =
   assert_bool "has transfer flag" (List.mem "-T" invocation.args);
   assert_bool "has transfer path" (List.mem "payload.json" invocation.args)
 
+let test_to_curl_applies_host_header _ =
+  let request =
+    {
+      Freight.Ast.name = Some "relative";
+      method_ = Freight.Ast.Post;
+      url = "/post";
+      headers =
+        [ ("Host", "https://httpbin.org/"); ("Content-Type", "application/json") ];
+      body = Freight.Ast.Body_inline "{\"message\": \"hello from freight\"}";
+    }
+  in
+  let invocation = Freight.Executor.to_curl request in
+  assert_bool "uses absolute url" (List.mem "https://httpbin.org/post" invocation.args);
+  assert_bool "removes Host header"
+    (not (List.mem "Host: https://httpbin.org/" invocation.args))
+
 let response_request =
   {
     Freight.Ast.name = Some "login";
@@ -747,6 +763,7 @@ let suite =
          "to_curl_inline_body" >:: test_to_curl_inline_body;
          "to_curl_file_body" >:: test_to_curl_file_body;
          "to_curl_put_file_body" >:: test_to_curl_put_file_body;
+         "to_curl_applies_host_header" >:: test_to_curl_applies_host_header;
          "parse_curl_output" >:: test_parse_curl_output;
          "parse_curl_output_uses_last_header_block"
          >:: test_parse_curl_output_uses_last_header_block;

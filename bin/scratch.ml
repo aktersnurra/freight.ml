@@ -40,7 +40,11 @@ let show ~call ~name ~filetype ~lines =
   ignore (call "nvim_buf_set_option"
     [ buf; Msgpck.String "modifiable"; Msgpck.Bool false ]);
   ignore (call "nvim_command"
-    [ Msgpck.String (Printf.sprintf "vsplit | buffer %d" handle_int) ]);
+    [ Msgpck.String
+        (Printf.sprintf
+           "vsplit | buffer %d | setlocal nonumber norelativenumber signcolumn=no foldcolumn=0"
+           handle_int)
+    ]);
   set_window_chrome ~call;
   handle_int
 

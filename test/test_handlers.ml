@@ -55,8 +55,14 @@ let test_freight_env _ =
     Test_runtime_fake.run config @@ fun () ->
       Handlers.freight_env (State.create ()) (Some "staging")
   in
-  assert_bool "shows env scratch"
-    (has_show_scratch ~name:"freight://env" calls)
+  assert_bool "does not show env scratch"
+    (not (has_show_scratch ~name:"freight://env" calls));
+  assert_bool "notifies active env"
+    (has_call
+       (function
+        | Test_runtime_fake.Notify (Freight_effect.Info, "Freight env: .env.staging") -> true
+        | _ -> false)
+       calls)
 
 (* freight_inspect *)
 

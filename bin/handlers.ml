@@ -50,24 +50,22 @@ let freight_open _state =
   in
   set_buf_keymaps buf
 
-let freight_env_apply state active_env =
+let load_active_env state active_env =
   State.set_active_env state active_env;
   let buf = Freight_effect.current_buffer () in
   let dir_opt = Freight_effect.buffer_dir buf in
-  (match dir_opt with
-   | Some dir -> state.State.env <- Freight_effect.load_env ~dir ~active_env
-   | None -> ());
-  let lines = Freight_effect.buffer_lines buf in
-  let source = String.concat "\n" lines in
-  let pairs = Freight.Env.to_list state.State.env in
-  let unresolved = Freight.Env.unresolved state.State.env source in
-  let scratch_buf =
-    Freight_effect.show_scratch
-      ~name:"freight://env"
-      ~filetype:"freight"
-      ~lines:(Request_view.render_env ~active_env ~pairs ~unresolved)
-  in
-  set_buf_keymaps scratch_buf
+  match dir_opt with
+  | Some dir -> state.State.env <- Freight_effect.load_env ~dir ~active_env
+  | None -> ()
+
+let describe_active_env = function
+  | None | Some "" -> ".env"
+  | Some name -> ".env." ^ name
+
+let freight_env_apply state active_env =
+  load_active_env state active_env;
+  Freight_effect.notify Info
+    ("Freight env: " ^ describe_active_env active_env)
 
 let freight_env state arg =
   match arg with

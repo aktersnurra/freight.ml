@@ -67,19 +67,56 @@ local function current_dir()
   return vim.fn.fnamemodify(name, ":p:h")
 end
 
-local function env_names(dir)
-  local names = {}
-  local seen = {}
-  for _, path in ipairs(vim.fn.globpath(dir, ".env.*", false, true)) do
-    local tail = vim.fn.fnamemodify(path, ":t")
-    local name = tail:match("^%.env%.(.+)$")
-    if name and name ~= "local" and not seen[name] then
-      seen[name] = true
-      table.insert(names, name)
+local function env_entries(dir)
+  local entries = {}
+  local seen_env = {}
+  local seen_file = {}
+  local files = {}
+
+  local function add_file(path)
+    if path ~= "" and not seen_file[path] and vim.fn.filereadable(path) == 1 then
+      seen_file[path] = true
+      table.insert(files, path)
     end
   end
-  table.sort(names)
-  return names
+
+  add_file(dir .. "/.env")
+  for _, path in ipairs(vim.fn.globpath(dir, ".env.*", false, true)) do
+    add_file(path)
+    local tail = vim.fn.fnamemodify(path, ":t")
+    local name = tail:match("^%.env%.(.+)$")
+    if name and name ~= "local" and not seen_env[name] then
+      seen_env[name] = true
+      table.insert(entries, {
+        kind = "environment",
+        label = "environment  " .. name,
+        name = name,
+      })
+    end
+  end
+
+  table.sort(entries, function(a, b) return a.label < b.label end)
+  table.sort(files)
+
+  for _, path in ipairs(files) do
+    local source = vim.fn.fnamemodify(path, ":t")
+    for _, line in ipairs(vim.fn.readfile(path)) do
+      local trimmed = vim.trim(line)
+      if trimmed ~= "" and not vim.startswith(trimmed, "#") then
+        local key, value = trimmed:match("^%s*([%w_][%w_%.%-]*)%s*=%s*(.*)$")
+        if key then
+          table.insert(entries, {
+            kind = "variable",
+            label = key .. " = " .. value .. "  (" .. source .. ")",
+            key = key,
+            value = value,
+          })
+        end
+      end
+    end
+  end
+
+  return entries
 end
 
 function M.select_env()
@@ -95,22 +132,38 @@ function M.select_env()
     return
   end
 
-  local names = env_names(current_dir())
-  if #names == 0 then
-    vim.notify("freight: no .env.<name> files found for this buffer", vim.log.levels.INFO)
+  local entries = env_entries(current_dir())
+  if #entries == 0 then
+    vim.notify("freight: no .env files found for this buffer", vim.log.levels.INFO)
     return
   end
 
   pickers.new({}, {
     prompt_title = "Freight environment",
-    finder = finders.new_table({ results = names }),
+    finder = finders.new_table({
+      results = entries,
+      entry_maker = function(entry)
+        return {
+          value = entry,
+          display = entry.label,
+          ordinal = entry.label,
+        }
+      end,
+    }),
     sorter = conf.values.generic_sorter({}),
     attach_mappings = function(prompt_bufnr)
       actions.select_default:replace(function()
         local selection = action_state.get_selected_entry()
         actions.close(prompt_bufnr)
-        if selection and selection[1] then
-          M.call_rpc("FreightEnv", selection[1])
+        if not selection or not selection.value then
+          return
+        end
+        local entry = selection.value
+        if entry.kind == "environment" then
+          M.call_rpc("FreightEnv", entry.name)
+        elseif entry.kind == "variable" then
+          vim.fn.setreg("+", entry.value)
+          vim.notify("freight: copied " .. entry.key .. " to clipboard", vim.log.levels.INFO)
         end
       end)
       return true

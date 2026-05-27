@@ -25,6 +25,7 @@ let register_commands ~call channel =
   cmd "FreightEnvApply"    `Required "FreightEnvApply";
   cmd "FreightInspect"     `None     "FreightInspect";
   cmd "FreightView"        `Required "FreightView";
+  cmd "FreightViewRunAll"  `Required "FreightViewRunAll";
   cmd "FreightHelp"        `None     "FreightHelp";
   cmd "FreightHistory"     `None     "FreightHistory";
   cmd "FreightViewHistory" `Required "FreightViewHistory"
@@ -66,6 +67,15 @@ let dispatch state method_ params =
       | _ -> "All"
     in
     Handlers.freight_view state view_name;
+    Msgpck.Nil
+  | "FreightViewRunAll" ->
+    let line_number =
+      match params with
+      | Msgpck.String s :: _ -> (try int_of_string (String.trim s) with _ -> 1)
+      | Msgpck.Int n :: _ -> n
+      | _ -> 1
+    in
+    Handlers.freight_view_run_all state line_number;
     Msgpck.Nil
   | "FreightHelp" ->
     Handlers.freight_help state;

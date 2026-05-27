@@ -61,7 +61,7 @@ let render_history (entries : State.history_entry list) =
   if entries = [] then
     [ "No requests in history." ]
   else
-    List.mapi (fun i { State.request; response; _ } ->
+    List.mapi (fun i ({ State.request; response; _ } : State.history_entry) ->
       let n = Printf.sprintf "%2d" (i + 1) in
       let meth = Printf.sprintf "%-6s" (Freight.Ast.method_to_string request.Freight.Ast.method_) in
       let status = Printf.sprintf "%d %s" response.Freight.Ast.status response.status_text in

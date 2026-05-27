@@ -43,6 +43,10 @@ end, {
   desc = "Switch the Freight response view",
 })
 
+vim.api.nvim_create_user_command("FreightViewRunAll", function(opts)
+  call_rpc("FreightViewRunAll", opts.args)
+end, { nargs = 1, desc = "Open a Freight run-all result" })
+
 vim.api.nvim_create_user_command("FreightInspect", function()
   call_rpc("FreightInspect")
 end, { desc = "Show parsed request details" })

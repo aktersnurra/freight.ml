@@ -15,6 +15,13 @@ let has_update_scratch calls =
     (function Test_runtime_fake.Update_scratch _ -> true | _ -> false)
     calls
 
+let has_update_scratch_line line calls =
+  has_call
+    (function
+     | Test_runtime_fake.Update_scratch (_, view) -> List.mem line view.lines
+     | _ -> false)
+    calls
+
 let has_run_curl calls =
   has_call
     (function Test_runtime_fake.Run_curl _ -> true | _ -> false)
@@ -225,6 +232,76 @@ let test_freight_run_all_runs_every_request _ =
            | _ -> false)
           calls))
 
+let test_freight_run_all_groups_results _ =
+  let raw_response =
+    "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nhello\n200\n0.010"
+  in
+  let state = State.create () in
+  let config =
+    { Test_runtime_fake.default_config with
+      buffer_lines =
+        [ "GET https://example.com/ok"; ""; "###"; "GET https://example.com/fail" ]
+    ; curl_result = Ok raw_response
+    ; fork_mode = `Run_immediately
+    }
+  in
+  let (), calls =
+    Test_runtime_fake.run config @@ fun () ->
+      Handlers.freight_run_all state
+  in
+  assert_equal 2 (List.length state.State.run_all_results);
+  assert_bool "has failed heading" (has_update_scratch_line "Failed" calls);
+  assert_bool "has successful heading" (has_update_scratch_line "Successful" calls);
+  assert_bool "enter keymap set"
+    (has_set_keymap ~key:"<CR>" calls)
+
+let test_freight_view_run_all_success _ =
+  let request =
+    { Freight.Ast.name = None
+    ; method_ = Freight.Ast.Get
+    ; url = "https://example.com/ok"
+    ; headers = []
+    ; body = Freight.Ast.Body_none
+    }
+  in
+  let response =
+    { Freight.Ast.status = 200
+    ; status_text = "OK"
+    ; headers = []
+    ; body = "hello"
+    ; duration_ms = 10
+    ; request
+    }
+  in
+  let state = State.create () in
+  state.State.run_all_results <-
+    [ State.Run_all_success { line_number = 1; request; response; verbose = "" } ];
+  let (), calls =
+    Test_runtime_fake.run Test_runtime_fake.default_config @@ fun () ->
+      Handlers.freight_view_run_all state 6
+  in
+  assert_bool "opens response scratch"
+    (has_show_scratch ~name:"freight://response/get-example-com-ok" calls)
+
+let test_freight_view_run_all_failure _ =
+  let request =
+    { Freight.Ast.name = None
+    ; method_ = Freight.Ast.Get
+    ; url = "https://example.com/fail"
+    ; headers = []
+    ; body = Freight.Ast.Body_none
+    }
+  in
+  let state = State.create () in
+  state.State.run_all_results <-
+    [ State.Run_all_failure { line_number = 1; request; message = "curl failed" } ];
+  let (), calls =
+    Test_runtime_fake.run Test_runtime_fake.default_config @@ fun () ->
+      Handlers.freight_view_run_all state 4
+  in
+  assert_bool "opens failure scratch"
+    (has_show_scratch ~name:"freight://run-all/failure" calls)
+
 let test_freight_run_parse_error _ =
   let config =
     { Test_runtime_fake.default_config with
@@ -410,6 +487,9 @@ let suite =
     ; "freight_run curl error" >:: test_freight_run_curl_error
     ; "freight_run success" >:: test_freight_run_success
     ; "freight_run_all runs every request" >:: test_freight_run_all_runs_every_request
+    ; "freight_run_all groups results" >:: test_freight_run_all_groups_results
+    ; "freight_view_run_all success" >:: test_freight_view_run_all_success
+    ; "freight_view_run_all failure" >:: test_freight_view_run_all_failure
     ; "freight_run parse error" >:: test_freight_run_parse_error
     ; "freight_run appends history" >:: test_freight_run_appends_history
     ; "freight_view no response" >:: test_freight_view_no_response

@@ -50,31 +50,32 @@ let freight_open _state =
   in
   set_buf_keymaps buf
 
+let freight_env_apply state active_env =
+  State.set_active_env state active_env;
+  let buf = Freight_effect.current_buffer () in
+  let dir_opt = Freight_effect.buffer_dir buf in
+  (match dir_opt with
+   | Some dir -> state.State.env <- Freight_effect.load_env ~dir ~active_env
+   | None -> ());
+  let lines = Freight_effect.buffer_lines buf in
+  let source = String.concat "\n" lines in
+  let pairs = Freight.Env.to_list state.State.env in
+  let unresolved = Freight.Env.unresolved state.State.env source in
+  let scratch_buf =
+    Freight_effect.show_scratch
+      ~name:"freight://env"
+      ~filetype:"freight"
+      ~lines:(Request_view.render_env ~active_env ~pairs ~unresolved)
+  in
+  set_buf_keymaps scratch_buf
+
 let freight_env state arg =
   match arg with
   | None | Some "" ->
     ignore
       (Freight_effect.nvim_call "nvim_command"
          [ Msgpck.String "lua require('freight').select_env()" ])
-  | Some env_name ->
-    let active_env = Some env_name in
-    State.set_active_env state active_env;
-    let buf = Freight_effect.current_buffer () in
-    let dir_opt = Freight_effect.buffer_dir buf in
-    (match dir_opt with
-     | Some dir -> state.State.env <- Freight_effect.load_env ~dir ~active_env
-     | None -> ());
-    let lines = Freight_effect.buffer_lines buf in
-    let source = String.concat "\n" lines in
-    let pairs = Freight.Env.to_list state.State.env in
-    let unresolved = Freight.Env.unresolved state.State.env source in
-    let scratch_buf =
-      Freight_effect.show_scratch
-        ~name:"freight://env"
-        ~filetype:"freight"
-        ~lines:(Request_view.render_env ~active_env ~pairs ~unresolved)
-    in
-    set_buf_keymaps scratch_buf
+  | Some env_name -> freight_env_apply state (Some env_name)
 
 let freight_inspect state =
   let buf, source, cursor_line = current_source () in

@@ -23,6 +23,7 @@ let register_commands ~call channel =
   cmd "FreightOpen"        `None     "FreightOpen";
   cmd "FreightRun"         `None     "FreightRun";
   cmd "FreightEnv"         `Optional "FreightEnv";
+  cmd "FreightEnvApply"    `Required "FreightEnvApply";
   cmd "FreightInspect"     `None     "FreightInspect";
   cmd "FreightView"        `Required "FreightView";
   cmd "FreightHelp"        `None     "FreightHelp";
@@ -44,6 +45,14 @@ let dispatch state method_ params =
       | _ -> None
     in
     Handlers.freight_env state arg;
+    Msgpck.Nil
+  | "FreightEnvApply" ->
+    let arg =
+      match params with
+      | Msgpck.String s :: _ -> Some s
+      | _ -> Some ""
+    in
+    Handlers.freight_env_apply state arg;
     Msgpck.Nil
   | "FreightInspect" ->
     Handlers.freight_inspect state;

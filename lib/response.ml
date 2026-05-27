@@ -134,31 +134,23 @@ let pretty_print_body content_type body =
       | exception Yojson.Json_error _ -> body)
   | _ -> body
 
-let render response =
-  let status_line =
-    Printf.sprintf "HTTP %d %s (%d ms)" response.Ast.status response.status_text
-      response.duration_ms
-  in
-  let header_lines =
-    List.map (fun (name, value) -> Printf.sprintf "%s: %s" name value) response.headers
-  in
-  let body = pretty_print_body (detect_content_type response) response.body in
-  status_line :: header_lines @ [ ""; body ]
+let render_status response =
+  Printf.sprintf "HTTP %d %s · %d ms" response.Ast.status response.status_text
+    response.duration_ms
+
+let render_header_lines response =
+  List.map (fun (name, value) -> Printf.sprintf "%s: %s" name value) response.Ast.headers
 
 let render_body response =
-  let body = pretty_print_body (detect_content_type response) response.body in
-  [ body ]
+  [ pretty_print_body (detect_content_type response) response.body ]
 
 let render_headers response =
-  let status_line =
-    Printf.sprintf "HTTP %d %s (%d ms)" response.Ast.status response.status_text
-      response.duration_ms
-  in
-  let header_lines =
-    List.map (fun (name, value) -> Printf.sprintf "%s: %s" name value) response.headers
-  in
-  status_line :: header_lines
+  render_status response :: "" :: "Headers" :: render_header_lines response
 
-let render_all = render
+let render_all response =
+  render_headers response
+  @ [ ""; "Body"; pretty_print_body (detect_content_type response) response.body ]
+
+let render response = render_all response
 
 let render_verbose raw = split_lines raw

@@ -465,6 +465,16 @@ let json_response body =
     request = response_request;
   }
 
+let sample_response ?(body = "") () =
+  {
+    Freight.Ast.status = 200;
+    status_text = "OK";
+    headers = [ ("Content-Type", "application/json") ];
+    body;
+    duration_ms = 123;
+    request = response_request;
+  }
+
 let test_detect_content_type _ =
   assert_equal Freight.Response.Json
     (Freight.Response.detect_content_type (json_response "{}"));
@@ -480,16 +490,27 @@ let test_detect_content_type _ =
 let test_render_pretty_prints_json_response _ =
   assert_equal
     [
-      "HTTP 200 OK (12 ms)";
+      "HTTP 200 OK · 12 ms";
+      "";
+      "Headers";
       "Content-Type: application/json";
       "";
+      "Body";
       "{ \"token\": \"abc\" }";
     ]
     (Freight.Response.render (json_response "{\"token\":\"abc\"}"))
 
 let test_render_falls_back_to_invalid_json_body _ =
   assert_equal
-    [ "HTTP 200 OK (12 ms)"; "Content-Type: application/json"; ""; "not json" ]
+    [
+      "HTTP 200 OK · 12 ms";
+      "";
+      "Headers";
+      "Content-Type: application/json";
+      "";
+      "Body";
+      "not json";
+    ]
     (Freight.Response.render (json_response "not json"))
 
 let test_render_body _ =
@@ -511,6 +532,18 @@ let test_render_body _ =
   let lines = Freight.Response.render_body response in
   assert_equal [ "{ \"id\": 1 }" ] lines
 
+let test_response_render_all_has_sections _ =
+  let response = sample_response ~body:"{\"ok\":true}" () in
+  let lines = Freight.Response.render_all response in
+  assert_bool "has status" (List.exists (( = ) "HTTP 200 OK · 123 ms") lines);
+  assert_bool "has headers heading" (List.exists (( = ) "Headers") lines);
+  assert_bool "has body heading" (List.exists (( = ) "Body") lines)
+
+let test_response_render_headers_has_heading _ =
+  let response = sample_response ~body:"" () in
+  let lines = Freight.Response.render_headers response in
+  assert_equal [ "HTTP 200 OK · 123 ms"; ""; "Headers"; "Content-Type: application/json" ] lines
+
 let test_render_headers _ =
   let request = {
     Freight.Ast.name = None;
@@ -529,7 +562,13 @@ let test_render_headers _ =
   } in
   let lines = Freight.Response.render_headers response in
   assert_equal
-    [ "HTTP 200 OK (100 ms)"; "content-type: application/json"; "x-foo: bar" ]
+    [
+      "HTTP 200 OK · 100 ms";
+      "";
+      "Headers";
+      "content-type: application/json";
+      "x-foo: bar";
+    ]
     lines
 
 let test_render_all _ =
@@ -722,6 +761,8 @@ let suite =
          "render_falls_back_to_invalid_json_body"
          >:: test_render_falls_back_to_invalid_json_body;
          "render_body" >:: test_render_body;
+         "response_render_all_has_sections" >:: test_response_render_all_has_sections;
+         "response_render_headers_has_heading" >:: test_response_render_headers_has_heading;
          "render_headers" >:: test_render_headers;
          "render_all" >:: test_render_all;
          "pretty_print_json" >:: test_pretty_print_json;

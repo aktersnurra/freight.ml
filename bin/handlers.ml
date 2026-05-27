@@ -115,7 +115,7 @@ let freight_run state =
       Freight_effect.show_scratch
         ~name
         ~filetype:"freight"
-        ~lines:[ "Loading\xe2\x80\xa6" ]
+        ~lines:[ "Running request…" ]
     in
     set_buf_keymaps loading_buf;
     Freight_effect.fork "FreightRun" @@ fun () ->
@@ -125,13 +125,13 @@ let freight_run state =
        | Error msg, _ | _, Error msg ->
          Freight_effect.update_scratch loading_buf
            ~name ~filetype:"freight"
-           ~lines:[ "Error: " ^ msg ]
+           ~lines:[ "Request failed"; msg ]
        | Ok raw, Ok verbose_raw ->
          (match Freight.Response.parse_curl_output raw request with
           | Error msg ->
             Freight_effect.update_scratch loading_buf
               ~name ~filetype:"freight"
-              ~lines:[ "Parse error: " ^ msg ]
+              ~lines:[ "Response parse failed"; msg ]
           | Ok response ->
             let filetype =
               Freight.Buffer.filetype_of_content_type

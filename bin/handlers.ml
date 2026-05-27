@@ -25,6 +25,9 @@ let set_buf_keymaps buf =
   Freight_effect.set_keymap buf ~key:"g?" ~command:":FreightHelp<CR>"
 
 let set_current_window_chrome () =
+  ignore
+    (Freight_effect.nvim_call "nvim_command"
+       [ Msgpck.String "setlocal nonumber norelativenumber signcolumn=no foldcolumn=0" ]);
   let set name value =
     ignore
       (Freight_effect.nvim_call "nvim_set_option_value"

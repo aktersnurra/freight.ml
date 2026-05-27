@@ -7,10 +7,14 @@ let register_commands ~call channel =
       | `Required -> " -nargs=1"
     in
     let call_str =
-      match nargs with
-      | `None ->
+      match (name, nargs) with
+      | "FreightEnv", `Optional ->
+        Printf.sprintf
+          "if empty(<q-args>) | lua require('freight').select_env() | else | call rpcrequest(%d, '%s', <q-args>) | endif"
+          channel rpc_method
+      | _, `None ->
         Printf.sprintf "call rpcrequest(%d, '%s')" channel rpc_method
-      | `Optional | `Required ->
+      | _, (`Optional | `Required) ->
         Printf.sprintf "call rpcrequest(%d, '%s', <q-args>)" channel rpc_method
     in
     let cmd_definition = Printf.sprintf "command!%s %s %s" nargs_str name call_str in

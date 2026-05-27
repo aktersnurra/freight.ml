@@ -8,6 +8,8 @@ let buf_handle_int buf =
   | _ -> failwith "expected buffer handle"
 
 let set_window_chrome ~call =
+  ignore (call "nvim_command"
+    [ Msgpck.String "setlocal nonumber norelativenumber signcolumn=no foldcolumn=0" ]);
   let set name value =
     ignore (call "nvim_set_option_value"
       [ Msgpck.String name; value; Msgpck.Map [ (Msgpck.String "scope", Msgpck.String "local") ] ])

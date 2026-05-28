@@ -6,6 +6,8 @@ type history_entry = {
 
 type run_all_success = {
   line_number : int;
+  source_buffer : Freight_effect.buffer_id;
+  source_line : int;
   request : Freight.Ast.request;
   response : Freight.Ast.response;
   verbose : string;
@@ -13,6 +15,8 @@ type run_all_success = {
 
 type run_all_failure = {
   line_number : int;
+  source_buffer : Freight_effect.buffer_id;
+  source_line : int;
   request : Freight.Ast.request;
   message : string;
   response : Freight.Ast.response option;

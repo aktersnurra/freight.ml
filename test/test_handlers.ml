@@ -285,7 +285,14 @@ let test_freight_run_all_groups_results _ =
   assert_bool "updates progress after first request"
     (has_update_scratch_line "Running 1/2 requests…" calls);
   assert_bool "enter keymap set"
-    (has_set_keymap ~key:"<CR>" calls)
+    (has_set_keymap ~key:"<CR>" calls);
+  assert_bool "jump keymap set"
+    (has_set_keymap ~key:"o" calls);
+  assert_bool "records source line"
+    (match state.State.run_all_results with
+     | [ State.Run_all_success first; State.Run_all_success second ] ->
+       first.source_line = 1 && second.source_line = 4
+     | _ -> false)
 
 let test_freight_run_all_groups_http_errors_as_failed _ =
   let raw_response =
@@ -333,6 +340,8 @@ let test_freight_run_all_http_failure_opens_response_detail _ =
   state.State.run_all_results <-
     [ State.Run_all_failure
         { line_number = 1
+        ; source_buffer = 1
+        ; source_line = 1
         ; request
         ; message = "400 Bad Request"
         ; response = Some response
@@ -364,7 +373,14 @@ let test_freight_view_run_all_success _ =
   in
   let state = State.create () in
   state.State.run_all_results <-
-    [ State.Run_all_success { line_number = 1; request; response; verbose = "" } ];
+    [ State.Run_all_success
+        { line_number = 1
+        ; source_buffer = 1
+        ; source_line = 1
+        ; request
+        ; response
+        ; verbose = ""
+        } ];
   let (), calls =
     Test_runtime_fake.run Test_runtime_fake.default_config @@ fun () ->
       Handlers.freight_view_run_all state 4
@@ -392,7 +408,14 @@ let test_freight_view_run_all_verbose_unavailable _ =
   in
   let state = State.create () in
   state.State.run_all_results <-
-    [ State.Run_all_success { line_number = 1; request; response; verbose = "" } ];
+    [ State.Run_all_success
+        { line_number = 1
+        ; source_buffer = 1
+        ; source_line = 1
+        ; request
+        ; response
+        ; verbose = ""
+        } ];
   let (), _calls =
     Test_runtime_fake.run Test_runtime_fake.default_config @@ fun () ->
       Handlers.freight_view_run_all state 4
@@ -416,13 +439,65 @@ let test_freight_view_run_all_failure _ =
   let state = State.create () in
   state.State.run_all_results <-
     [ State.Run_all_failure
-        { line_number = 1; request; message = "curl failed"; response = None } ];
+        { line_number = 1
+        ; source_buffer = 1
+        ; source_line = 1
+        ; request
+        ; message = "curl failed"
+        ; response = None
+        } ];
   let (), calls =
     Test_runtime_fake.run Test_runtime_fake.default_config @@ fun () ->
       Handlers.freight_view_run_all state 4
   in
   assert_bool "opens failure scratch"
     (has_show_scratch ~name:"freight://run-all/failure" calls)
+
+let test_freight_jump_run_all _ =
+  let request =
+    { Freight.Ast.name = None
+    ; method_ = Freight.Ast.Get
+    ; url = "https://example.com/ok"
+    ; headers = []
+    ; body = Freight.Ast.Body_none
+    }
+  in
+  let response =
+    { Freight.Ast.status = 200
+    ; status_text = "OK"
+    ; headers = []
+    ; body = "hello"
+    ; duration_ms = 10
+    ; request
+    }
+  in
+  let state = State.create () in
+  state.State.run_all_results <-
+    [ State.Run_all_success
+        { line_number = 1
+        ; source_buffer = 7
+        ; source_line = 12
+        ; request
+        ; response
+        ; verbose = ""
+        } ];
+  let (), calls =
+    Test_runtime_fake.run Test_runtime_fake.default_config @@ fun () ->
+      Handlers.freight_jump_run_all state 4
+  in
+  assert_bool "switches to source buffer"
+    (has_call
+       (function
+        | Test_runtime_fake.Nvim_call ("nvim_command", [ Msgpck.String "buffer 7" ]) -> true
+        | _ -> false)
+       calls);
+  assert_bool "moves cursor to source line"
+    (has_call
+       (function
+        | Test_runtime_fake.Nvim_call
+            ("nvim_win_set_cursor", [ Msgpck.Int 0; Msgpck.List [ Msgpck.Int 12; Msgpck.Int 0 ] ]) -> true
+        | _ -> false)
+       calls)
 
 let test_freight_run_parse_error _ =
   let config =
@@ -616,6 +691,7 @@ let suite =
     ; "freight_view_run_all success" >:: test_freight_view_run_all_success
     ; "freight_view_run_all verbose unavailable" >:: test_freight_view_run_all_verbose_unavailable
     ; "freight_view_run_all failure" >:: test_freight_view_run_all_failure
+    ; "freight_jump_run_all" >:: test_freight_jump_run_all
     ; "freight_run parse error" >:: test_freight_run_parse_error
     ; "freight_run appends history" >:: test_freight_run_appends_history
     ; "freight_view no response" >:: test_freight_view_no_response

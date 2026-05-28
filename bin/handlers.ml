@@ -112,6 +112,7 @@ let freight_help _state =
       ; "  q                     Close window"
       ; "  g?                    Show this help"
       ; "  <CR>                  Open run-all/history entry"
+      ; "  o                     Jump from run-all entry to source"
       ; ""
       ; "  (response buffer)"
       ; "  B                     Body view"
@@ -244,14 +245,18 @@ let freight_run_all state =
     set_buf_keymaps scratch_buf
   | Ok { Freight.Ast.requests = []; _ } ->
     show_error "No requests found in buffer."
-  | Ok file ->
+  | Ok _file ->
     let requests =
-      List.map
-        (fun request ->
-          request
-          |> Freight.Resolve.substitute_request env
-          |> Freight.Ast.apply_host_header)
-        file.Freight.Ast.requests
+      match Freight.Parser.parse_source_with_lines source with
+      | Error _ -> []
+      | Ok pairs ->
+        List.map
+          (fun (source_line, request) ->
+            ( source_line
+            , request
+              |> Freight.Resolve.substitute_request env
+              |> Freight.Ast.apply_host_header ))
+          pairs
     in
     let name = "freight://run-all" in
     let loading_buf =
@@ -264,27 +269,30 @@ let freight_run_all state =
     Freight_effect.fork "FreightRunAll" @@ fun () ->
       let results = ref [] in
       List.iteri
-        (fun index request ->
+        (fun index (source_line, request) ->
           let line_number = index + 1 in
+          let source_buffer = buf in
           let invocation = Freight.Executor.to_curl request in
           match Freight_effect.run_curl invocation with
           | Error message ->
             results :=
               State.Run_all_failure
-                { line_number; request; message; response = None }
+                { line_number; source_buffer; source_line; request; message; response = None }
               :: !results
           | Ok raw ->
             (match Freight.Response.parse_curl_output raw request with
              | Error message ->
                results :=
                  State.Run_all_failure
-                   { line_number; request; message; response = None }
+                   { line_number; source_buffer; source_line; request; message; response = None }
                  :: !results
              | Ok response ->
                if response.Freight.Ast.status >= 400 then
                  results :=
                    State.Run_all_failure
                      { line_number
+                     ; source_buffer
+                     ; source_line
                      ; request
                      ; message =
                          Printf.sprintf "%d %s" response.status response.status_text
@@ -294,7 +302,8 @@ let freight_run_all state =
                else begin
                  record_response state request response "" loading_buf name;
                  results :=
-                   State.Run_all_success { line_number; request; response; verbose = "" }
+                   State.Run_all_success
+                     { line_number; source_buffer; source_line; request; response; verbose = "" }
                    :: !results
                end);
           state.State.run_all_results <- List.rev !results;
@@ -305,7 +314,9 @@ let freight_run_all state =
       Freight_effect.update_scratch loading_buf ~name ~filetype:"freight"
         ~lines:(render_run_all_results state.State.run_all_results);
       Freight_effect.set_keymap loading_buf ~key:"<CR>"
-        ~command:":<C-u>execute 'FreightViewRunAll ' . line('.')<CR>"
+        ~command:":<C-u>execute 'FreightViewRunAll ' . line('.')<CR>";
+      Freight_effect.set_keymap loading_buf ~key:"o"
+        ~command:":<C-u>execute 'FreightJumpRunAll ' . line('.')<CR>"
 
 let run_all_result_at_line results line_number =
   let failures, successes =
@@ -331,6 +342,20 @@ let run_all_result_at_line results line_number =
   let success_entries = append_section successes in
   let indexed_lines = failure_entries @ success_entries in
   List.assoc_opt line_number indexed_lines
+
+let freight_jump_run_all state line_number =
+  let jump source_buffer source_line =
+    ignore (Freight_effect.nvim_call "nvim_command"
+      [ Msgpck.String (Printf.sprintf "buffer %d" source_buffer) ]);
+    ignore (Freight_effect.nvim_call "nvim_win_set_cursor"
+      [ Msgpck.Int 0; Msgpck.List [ Msgpck.Int source_line; Msgpck.Int 0 ] ])
+  in
+  match run_all_result_at_line state.State.run_all_results line_number with
+  | None -> show_error "No run-all entry at that line."
+  | Some (State.Run_all_success entry) ->
+    jump entry.source_buffer entry.source_line
+  | Some (State.Run_all_failure entry) ->
+    jump entry.source_buffer entry.source_line
 
 let freight_view_run_all state line_number =
   match run_all_result_at_line state.State.run_all_results line_number with

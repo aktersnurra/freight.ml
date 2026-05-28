@@ -113,7 +113,7 @@ Successful
 3. GET https://api.example.com/health — 200 OK
 ```
 
-Empty groups are hidden. Press Enter on a result line to open it. Successful responses and HTTP failures such as `400 Bad Request` open the full response view; curl or parse failures open a failure detail buffer.
+Empty groups are hidden. Press Enter on a result line to open it. Successful responses and HTTP failures such as `400 Bad Request` open the full response view; curl or parse failures open a failure detail buffer. Press `o` on a result line to jump back to the source request in the original `.http` buffer.
 
 ## HTTP file format
 

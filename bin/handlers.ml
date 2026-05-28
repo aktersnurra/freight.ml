@@ -342,7 +342,8 @@ let freight_view_run_all state line_number =
         (Freight.Response.detect_content_type entry.response)
     in
     state.State.last_response <- Some entry.response;
-    state.State.verbose_output <- Some entry.verbose;
+    state.State.verbose_output <-
+      (if entry.verbose = "" then None else Some entry.verbose);
     let buf =
       Freight_effect.show_scratch ~name ~filetype
         ~lines:(Freight.Response.render entry.response)
@@ -398,7 +399,7 @@ let freight_view state view_name =
          | "Verbose" ->
            let lines =
              match state.State.verbose_output with
-             | None -> [ "No verbose output available." ]
+             | None -> [ "No verbose output available for run-all results." ]
              | Some raw -> Freight.Response.render_verbose raw
            in
            (lines, "freight")

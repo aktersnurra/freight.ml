@@ -4,6 +4,7 @@ type call =
   | Buffer_dir of Freight_effect.buffer_id
   | Cursor
   | Show_scratch of Freight_effect.scratch_view
+  | Show_float of Freight_effect.scratch_view
   | Update_scratch of Freight_effect.buffer_id * Freight_effect.scratch_view
   | Set_keymap of Freight_effect.buffer_id * string * string
   | Load_env of { dir : string; active_env : string option }
@@ -68,6 +69,10 @@ let rec run config f =
                 let id = !next_buf in
                 incr next_buf;
                 Effect.Deep.continue k id)
+            | Freight_effect.Show_float view ->
+              Some (fun (k : (a, _) Effect.Deep.continuation) ->
+                log (Show_float view);
+                Effect.Deep.continue k ())
             | Freight_effect.Update_scratch (buf, view) ->
               Some (fun (k : (a, _) Effect.Deep.continuation) ->
                 log (Update_scratch (buf, view));

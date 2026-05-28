@@ -10,6 +10,13 @@ let has_show_scratch ~name calls =
      | _ -> false)
     calls
 
+let has_show_float_line line calls =
+  has_call
+    (function
+     | Test_runtime_fake.Show_float v -> List.mem line v.lines
+     | _ -> false)
+    calls
+
 let has_update_scratch calls =
   has_call
     (function Test_runtime_fake.Update_scratch _ -> true | _ -> false)
@@ -127,6 +134,18 @@ let test_freight_inspect_valid _ =
   in
   assert_bool "shows inspect scratch"
     (has_show_scratch ~name:"freight://inspect" calls)
+
+(* freight_help *)
+
+let test_freight_help_includes_run_all _ =
+  let (), calls =
+    Test_runtime_fake.run Test_runtime_fake.default_config @@ fun () ->
+      Handlers.freight_help (State.create ())
+  in
+  assert_bool "documents run all command"
+    (has_show_float_line "  :FreightRunAll        Run every request in the buffer" calls);
+  assert_bool "documents run all enter"
+    (has_show_float_line "  <CR>                  Open run-all/history entry" calls)
 
 (* freight_run *)
 
@@ -554,6 +573,7 @@ let suite =
     ; "freight_env" >:: test_freight_env
     ; "freight_inspect parse error" >:: test_freight_inspect_parse_error
     ; "freight_inspect valid" >:: test_freight_inspect_valid
+    ; "freight_help includes run all" >:: test_freight_help_includes_run_all
     ; "freight_run no request" >:: test_freight_run_no_request
     ; "freight_run curl error" >:: test_freight_run_curl_error
     ; "freight_run success" >:: test_freight_run_success

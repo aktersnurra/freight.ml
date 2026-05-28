@@ -101,16 +101,23 @@ let freight_inspect state =
 let freight_help _state =
   Freight_effect.show_float ~title:"Freight Help"
     ~lines:
-      [ "  Keymaps"
+      [ "  Commands"
       ; ""
-      ; "  q        Close window"
-      ; "  g?       Show this help"
+      ; "  :FreightRun           Run request under cursor"
+      ; "  :FreightRunAll        Run every request in the buffer"
+      ; "  :FreightHistory       Show recent request history"
+      ; ""
+      ; "  Keymaps"
+      ; ""
+      ; "  q                     Close window"
+      ; "  g?                    Show this help"
+      ; "  <CR>                  Open run-all/history entry"
       ; ""
       ; "  (response buffer)"
-      ; "  B        Body view"
-      ; "  H        Headers view"
-      ; "  A        All view"
-      ; "  V        Verbose view"
+      ; "  B                     Body view"
+      ; "  H                     Headers view"
+      ; "  A                     All view"
+      ; "  V                     Verbose view"
       ]
 
 let record_response state request response verbose_raw response_buf response_buf_name =

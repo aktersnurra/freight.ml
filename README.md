@@ -73,6 +73,35 @@ vim.g.freight_executable = '/path/to/main.exe'
 | `:FreightViewHistory <index>` | Open a response from request history |
 | `:FreightViewRunAll <line>` | Open a result from the latest run-all summary; normally used by pressing Enter in `freight://run-all` |
 
+## Run-all results
+
+`:FreightRunAll` executes every request in the current buffer and updates `freight://run-all` as each request completes:
+
+```text
+Running 2/3 requests…
+
+Failed
+2. POST https://api.example.com/widgets — 400 Bad Request
+
+Successful
+1. GET https://api.example.com/profile — 200 OK
+```
+
+When the run finishes, the header changes to a final summary:
+
+```text
+Run all complete: 2 succeeded, 1 failed
+
+Failed
+2. POST https://api.example.com/widgets — 400 Bad Request
+
+Successful
+1. GET https://api.example.com/profile — 200 OK
+3. GET https://api.example.com/health — 200 OK
+```
+
+Empty groups are hidden. Press Enter on a result line to open it. Successful responses and HTTP failures such as `400 Bad Request` open the full response view; curl or parse failures open a failure detail buffer.
+
 ## HTTP file format
 
 freight.ml parses the JetBrains `.http` subset:

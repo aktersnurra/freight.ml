@@ -73,6 +73,19 @@ vim.g.freight_executable = '/path/to/main.exe'
 | `:FreightViewHistory <index>` | Open a response from request history |
 | `:FreightViewRunAll <line>` | Open a result from the latest run-all summary; normally used by pressing Enter in `freight://run-all` |
 
+## Suggested keymaps
+
+Freight does not install global mappings by default. If you want a compact `<leader>r` prefix for request work:
+
+```lua
+vim.keymap.set("n", "<leader>rr", "<cmd>FreightRun<cr>", { desc = "Freight: run request" })
+vim.keymap.set("n", "<leader>ra", "<cmd>FreightRunAll<cr>", { desc = "Freight: run all requests" })
+vim.keymap.set("n", "<leader>rh", "<cmd>FreightHistory<cr>", { desc = "Freight: history" })
+vim.keymap.set("n", "<leader>ri", "<cmd>FreightInspect<cr>", { desc = "Freight: inspect request" })
+vim.keymap.set("n", "<leader>re", "<cmd>FreightEnv<cr>", { desc = "Freight: environment" })
+vim.keymap.set("n", "<leader>r?", "<cmd>FreightHelp<cr>", { desc = "Freight: help" })
+```
+
 ## Run-all results
 
 `:FreightRunAll` executes every request in the current buffer and updates `freight://run-all` as each request completes:

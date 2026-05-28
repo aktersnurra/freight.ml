@@ -134,7 +134,7 @@ let request_label request =
     (Freight.Ast.method_to_string request.Freight.Ast.method_)
     request.Freight.Ast.url
 
-let render_run_all_results results =
+let render_run_all_results ?progress results =
   let successes, failures =
     List.partition_map
       (function
@@ -159,13 +159,21 @@ let render_run_all_results results =
         (request_label entry.request) entry.response.Freight.Ast.status
         entry.response.Freight.Ast.status_text)
   in
-  [ Printf.sprintf "Run all complete: %d succeeded, %d failed"
-      success_count failure_count
-  ; ""
-  ; "Failed" ]
-  @ failure_lines
-  @ [ ""; "Successful" ]
-  @ success_lines
+  let header =
+    match progress with
+    | Some (done_count, total) ->
+      Printf.sprintf "Running %d/%d requests…" done_count total
+    | None ->
+      Printf.sprintf "Run all complete: %d succeeded, %d failed"
+        success_count failure_count
+  in
+  let failed_section =
+    if failure_lines = [] then [] else [ ""; "Failed" ] @ failure_lines
+  in
+  let success_section =
+    if success_lines = [] then [] else [ ""; "Successful" ] @ success_lines
+  in
+  [ header ] @ failed_section @ success_section
 
 let freight_run state =
   let buf, source, cursor_line = current_source () in
@@ -255,12 +263,16 @@ let freight_run_all state =
           match Freight_effect.run_curl invocation with
           | Error message ->
             results :=
-              State.Run_all_failure { line_number; request; message } :: !results
+              State.Run_all_failure
+                { line_number; request; message; response = None }
+              :: !results
           | Ok raw ->
             (match Freight.Response.parse_curl_output raw request with
              | Error message ->
                results :=
-                 State.Run_all_failure { line_number; request; message } :: !results
+                 State.Run_all_failure
+                   { line_number; request; message; response = None }
+                 :: !results
              | Ok response ->
                if response.Freight.Ast.status >= 400 then
                  results :=
@@ -269,6 +281,7 @@ let freight_run_all state =
                      ; request
                      ; message =
                          Printf.sprintf "%d %s" response.status response.status_text
+                     ; response = Some response
                      }
                    :: !results
                else begin
@@ -276,9 +289,12 @@ let freight_run_all state =
                  results :=
                    State.Run_all_success { line_number; request; response; verbose = "" }
                    :: !results
-               end))
+               end);
+          state.State.run_all_results <- List.rev !results;
+          Freight_effect.update_scratch loading_buf ~name ~filetype:"freight"
+            ~lines:(render_run_all_results ~progress:(line_number, List.length requests)
+                      state.State.run_all_results))
         requests;
-      state.State.run_all_results <- List.rev !results;
       Freight_effect.update_scratch loading_buf ~name ~filetype:"freight"
         ~lines:(render_run_all_results state.State.run_all_results);
       Freight_effect.set_keymap loading_buf ~key:"<CR>"
@@ -292,27 +308,21 @@ let run_all_result_at_line results line_number =
        | State.Run_all_success entry -> Right (State.Run_all_success entry))
       results
   in
-  let indexed_lines =
-    let line = ref 4 in
-    let failure_entries =
-      List.map
-        (fun entry ->
-          let current = !line in
-          incr line;
-          (current, entry))
-        failures
-    in
-    line := !line + 2;
-    let success_entries =
-      List.map
-        (fun entry ->
-          let current = !line in
-          incr line;
-          (current, entry))
-        successes
-    in
-    failure_entries @ success_entries
+  let line = ref 1 in
+  let append_section entries =
+    match entries with
+    | [] -> []
+    | _ ->
+      line := !line + 2;
+      let mapped =
+        List.mapi (fun index entry -> (!line + index + 1, entry)) entries
+      in
+      line := !line + List.length entries;
+      mapped
   in
+  let failure_entries = append_section failures in
+  let success_entries = append_section successes in
+  let indexed_lines = failure_entries @ success_entries in
   List.assoc_opt line_number indexed_lines
 
 let freight_view_run_all state line_number =
@@ -335,13 +345,31 @@ let freight_view_run_all state line_number =
     state.State.response_buf <- Some buf;
     state.State.response_buf_name <- Some name
   | Some (State.Run_all_failure entry) ->
-    let buf =
-      Freight_effect.show_scratch
-        ~name:"freight://run-all/failure"
-        ~filetype:"freight"
-        ~lines:[ "Request failed"; ""; request_label entry.request; ""; entry.message ]
-    in
-    set_buf_keymaps buf
+    (match entry.response with
+     | Some response ->
+       let name = Freight.Buffer.buffer_name entry.request in
+       let filetype =
+         Freight.Buffer.filetype_of_content_type
+           (Freight.Response.detect_content_type response)
+       in
+       state.State.last_response <- Some response;
+       state.State.verbose_output <- None;
+       let buf =
+         Freight_effect.show_scratch ~name ~filetype
+           ~lines:(Freight.Response.render response)
+       in
+       set_buf_keymaps buf;
+       set_response_keymaps buf;
+       state.State.response_buf <- Some buf;
+       state.State.response_buf_name <- Some name
+     | None ->
+       let buf =
+         Freight_effect.show_scratch
+           ~name:"freight://run-all/failure"
+           ~filetype:"freight"
+           ~lines:[ "Request failed"; ""; request_label entry.request; ""; entry.message ]
+       in
+       set_buf_keymaps buf)
 
 let freight_view state view_name =
   match state.State.last_response with

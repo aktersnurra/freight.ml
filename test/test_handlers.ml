@@ -22,6 +22,17 @@ let has_update_scratch_line line calls =
      | _ -> false)
     calls
 
+let update_scratch_lines calls =
+  calls
+  |> List.filter_map (function
+    | Test_runtime_fake.Update_scratch (_, view) -> Some view.lines
+    | _ -> None)
+
+let has_no_update_scratch_line line calls =
+  calls
+  |> update_scratch_lines
+  |> List.exists (fun lines -> not (List.mem line lines))
+
 let has_run_curl calls =
   has_call
     (function Test_runtime_fake.Run_curl _ -> true | _ -> false)
@@ -250,8 +261,10 @@ let test_freight_run_all_groups_results _ =
       Handlers.freight_run_all state
   in
   assert_equal 2 (List.length state.State.run_all_results);
-  assert_bool "has failed heading" (has_update_scratch_line "Failed" calls);
+  assert_bool "hides empty failed heading" (has_no_update_scratch_line "Failed" calls);
   assert_bool "has successful heading" (has_update_scratch_line "Successful" calls);
+  assert_bool "updates progress after first request"
+    (has_update_scratch_line "Running 1/2 requests…" calls);
   assert_bool "enter keymap set"
     (has_set_keymap ~key:"<CR>" calls)
 
@@ -276,7 +289,41 @@ let test_freight_run_all_groups_http_errors_as_failed _ =
      | [ State.Run_all_failure _ ] -> true
      | _ -> false);
   assert_bool "summary counts HTTP error as failed"
-    (has_update_scratch_line "Run all complete: 0 succeeded, 1 failed" calls)
+    (has_update_scratch_line "Run all complete: 0 succeeded, 1 failed" calls);
+  assert_bool "hides empty successful heading" (has_no_update_scratch_line "Successful" calls)
+
+let test_freight_run_all_http_failure_opens_response_detail _ =
+  let request =
+    { Freight.Ast.name = None
+    ; method_ = Freight.Ast.Post
+    ; url = "https://example.com/post"
+    ; headers = []
+    ; body = Freight.Ast.Body_none
+    }
+  in
+  let response =
+    { Freight.Ast.status = 400
+    ; status_text = "Bad Request"
+    ; headers = [ ("Content-Type", "text/plain") ]
+    ; body = "bad body"
+    ; duration_ms = 10
+    ; request
+    }
+  in
+  let state = State.create () in
+  state.State.run_all_results <-
+    [ State.Run_all_failure
+        { line_number = 1
+        ; request
+        ; message = "400 Bad Request"
+        ; response = Some response
+        } ];
+  let (), calls =
+    Test_runtime_fake.run Test_runtime_fake.default_config @@ fun () ->
+      Handlers.freight_view_run_all state 4
+  in
+  assert_bool "opens HTTP failure response scratch"
+    (has_show_scratch ~name:"freight://response/post-example-com-post" calls)
 
 let test_freight_view_run_all_success _ =
   let request =
@@ -301,7 +348,7 @@ let test_freight_view_run_all_success _ =
     [ State.Run_all_success { line_number = 1; request; response; verbose = "" } ];
   let (), calls =
     Test_runtime_fake.run Test_runtime_fake.default_config @@ fun () ->
-      Handlers.freight_view_run_all state 6
+      Handlers.freight_view_run_all state 4
   in
   assert_bool "opens response scratch"
     (has_show_scratch ~name:"freight://response/get-example-com-ok" calls)
@@ -317,7 +364,8 @@ let test_freight_view_run_all_failure _ =
   in
   let state = State.create () in
   state.State.run_all_results <-
-    [ State.Run_all_failure { line_number = 1; request; message = "curl failed" } ];
+    [ State.Run_all_failure
+        { line_number = 1; request; message = "curl failed"; response = None } ];
   let (), calls =
     Test_runtime_fake.run Test_runtime_fake.default_config @@ fun () ->
       Handlers.freight_view_run_all state 4
@@ -512,6 +560,7 @@ let suite =
     ; "freight_run_all runs every request" >:: test_freight_run_all_runs_every_request
     ; "freight_run_all groups results" >:: test_freight_run_all_groups_results
     ; "freight_run_all groups HTTP errors as failed" >:: test_freight_run_all_groups_http_errors_as_failed
+    ; "freight_run_all HTTP failure opens response detail" >:: test_freight_run_all_http_failure_opens_response_detail
     ; "freight_view_run_all success" >:: test_freight_view_run_all_success
     ; "freight_view_run_all failure" >:: test_freight_view_run_all_failure
     ; "freight_run parse error" >:: test_freight_run_parse_error

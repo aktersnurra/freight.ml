@@ -15,6 +15,7 @@ type run_all_failure = {
   line_number : int;
   request : Freight.Ast.request;
   message : string;
+  response : Freight.Ast.response option;
 }
 
 type run_all_result =

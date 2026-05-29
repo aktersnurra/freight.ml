@@ -271,6 +271,10 @@ let freight_run_all state =
         ~lines:[ Printf.sprintf "Running %d requests…" (List.length requests) ]
     in
     set_buf_keymaps loading_buf;
+    Freight_effect.set_keymap loading_buf ~key:"<CR>"
+      ~command:":<C-u>execute 'FreightViewRunAll ' . line('.')<CR>";
+    Freight_effect.set_keymap loading_buf ~key:"o"
+      ~command:":<C-u>execute 'FreightJumpRunAll ' . line('.')<CR>";
     Freight_effect.fork "FreightRunAll" @@ fun () ->
       let results = ref [] in
       List.iteri
@@ -318,11 +322,7 @@ let freight_run_all state =
                       state.State.run_all_results))
         requests;
       Freight_effect.update_scratch loading_buf ~name ~filetype:"freight"
-        ~lines:(render_run_all_results state.State.run_all_results);
-      Freight_effect.set_keymap loading_buf ~key:"<CR>"
-        ~command:":<C-u>execute 'FreightViewRunAll ' . line('.')<CR>";
-      Freight_effect.set_keymap loading_buf ~key:"o"
-        ~command:":<C-u>execute 'FreightJumpRunAll ' . line('.')<CR>"
+        ~lines:(render_run_all_results state.State.run_all_results)
 
 let run_all_result_at_line results line_number =
   let failures, successes =

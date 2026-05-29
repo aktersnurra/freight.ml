@@ -457,6 +457,28 @@ let test_freight_view_run_all_failure _ =
   assert_bool "opens failure scratch"
     (has_show_scratch ~name:"freight://run-all/failure" calls)
 
+let test_freight_run_all_records_ext_source_window _ =
+  let raw_response =
+    "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nhello\n200\n0.010"
+  in
+  let state = State.create () in
+  let config =
+    { Test_runtime_fake.default_config with
+      buffer_lines = [ "GET https://example.com/ok" ]
+    ; curl_result = Ok raw_response
+    ; nvim_eval_result = Msgpck.Ext (0, "\000\000\000\042")
+    ; fork_mode = `Run_immediately
+    }
+  in
+  let (), _calls =
+    Test_runtime_fake.run config @@ fun () ->
+      Handlers.freight_run_all state
+  in
+  assert_bool "records ext window handle"
+    (match state.State.run_all_results with
+     | [ State.Run_all_success entry ] -> entry.source_window = 42
+     | _ -> false)
+
 let test_freight_jump_run_all _ =
   let request =
     { Freight.Ast.name = None
@@ -702,6 +724,7 @@ let suite =
     ; "freight_view_run_all success" >:: test_freight_view_run_all_success
     ; "freight_view_run_all verbose unavailable" >:: test_freight_view_run_all_verbose_unavailable
     ; "freight_view_run_all failure" >:: test_freight_view_run_all_failure
+    ; "freight_run_all records ext source window" >:: test_freight_run_all_records_ext_source_window
     ; "freight_jump_run_all" >:: test_freight_jump_run_all
     ; "freight_run parse error" >:: test_freight_run_parse_error
     ; "freight_run appends history" >:: test_freight_run_appends_history

@@ -137,6 +137,14 @@ let set_response_keymaps buf =
   Freight_effect.set_keymap buf ~key:"A" ~command:":FreightView All<CR>";
   Freight_effect.set_keymap buf ~key:"V" ~command:":FreightView Verbose<CR>"
 
+let ext_to_int s =
+  String.fold_left (fun acc c -> (acc lsl 8) lor Char.code c) 0 s
+
+let decode_handle = function
+  | Msgpck.Int id -> id
+  | Msgpck.Ext (_, s) -> ext_to_int s
+  | _ -> 0
+
 let request_label request =
   Printf.sprintf "%s %s"
     (Freight.Ast.method_to_string request.Freight.Ast.method_)
@@ -234,9 +242,7 @@ let freight_run state =
 let freight_run_all state =
   let buf, source, _cursor_line = current_source () in
   let source_window =
-    match Freight_effect.nvim_call "nvim_get_current_win" [] with
-    | Msgpck.Int id -> id
-    | _ -> 0
+    Freight_effect.nvim_call "nvim_get_current_win" [] |> decode_handle
   in
   let env = resolve_env state buf in
   match Freight.Parser.parse_string source with

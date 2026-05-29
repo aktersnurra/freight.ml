@@ -341,6 +341,7 @@ let test_freight_run_all_http_failure_opens_response_detail _ =
     [ State.Run_all_failure
         { line_number = 1
         ; source_buffer = 1
+        ; source_window = 1
         ; source_line = 1
         ; request
         ; message = "400 Bad Request"
@@ -376,6 +377,7 @@ let test_freight_view_run_all_success _ =
     [ State.Run_all_success
         { line_number = 1
         ; source_buffer = 1
+        ; source_window = 1
         ; source_line = 1
         ; request
         ; response
@@ -411,6 +413,7 @@ let test_freight_view_run_all_verbose_unavailable _ =
     [ State.Run_all_success
         { line_number = 1
         ; source_buffer = 1
+        ; source_window = 1
         ; source_line = 1
         ; request
         ; response
@@ -441,6 +444,7 @@ let test_freight_view_run_all_failure _ =
     [ State.Run_all_failure
         { line_number = 1
         ; source_buffer = 1
+        ; source_window = 1
         ; source_line = 1
         ; request
         ; message = "curl failed"
@@ -476,6 +480,7 @@ let test_freight_jump_run_all _ =
     [ State.Run_all_success
         { line_number = 1
         ; source_buffer = 7
+        ; source_window = 42
         ; source_line = 12
         ; request
         ; response
@@ -485,6 +490,12 @@ let test_freight_jump_run_all _ =
     Test_runtime_fake.run Test_runtime_fake.default_config @@ fun () ->
       Handlers.freight_jump_run_all state 4
   in
+  assert_bool "switches to source window"
+    (has_call
+       (function
+        | Test_runtime_fake.Nvim_call ("nvim_set_current_win", [ Msgpck.Int 42 ]) -> true
+        | _ -> false)
+       calls);
   assert_bool "switches to source buffer"
     (has_call
        (function

@@ -233,6 +233,11 @@ let freight_run state =
 
 let freight_run_all state =
   let buf, source, _cursor_line = current_source () in
+  let source_window =
+    match Freight_effect.nvim_call "nvim_get_current_win" [] with
+    | Msgpck.Int id -> id
+    | _ -> 0
+  in
   let env = resolve_env state buf in
   match Freight.Parser.parse_string source with
   | Error err ->
@@ -277,14 +282,14 @@ let freight_run_all state =
           | Error message ->
             results :=
               State.Run_all_failure
-                { line_number; source_buffer; source_line; request; message; response = None }
+                { line_number; source_buffer; source_window; source_line; request; message; response = None }
               :: !results
           | Ok raw ->
             (match Freight.Response.parse_curl_output raw request with
              | Error message ->
                results :=
                  State.Run_all_failure
-                   { line_number; source_buffer; source_line; request; message; response = None }
+                   { line_number; source_buffer; source_window; source_line; request; message; response = None }
                  :: !results
              | Ok response ->
                if response.Freight.Ast.status >= 400 then
@@ -292,6 +297,7 @@ let freight_run_all state =
                    State.Run_all_failure
                      { line_number
                      ; source_buffer
+                     ; source_window
                      ; source_line
                      ; request
                      ; message =
@@ -303,7 +309,7 @@ let freight_run_all state =
                  record_response state request response "" loading_buf name;
                  results :=
                    State.Run_all_success
-                     { line_number; source_buffer; source_line; request; response; verbose = "" }
+                     { line_number; source_buffer; source_window; source_line; request; response; verbose = "" }
                    :: !results
                end);
           state.State.run_all_results <- List.rev !results;
@@ -344,7 +350,9 @@ let run_all_result_at_line results line_number =
   List.assoc_opt line_number indexed_lines
 
 let freight_jump_run_all state line_number =
-  let jump source_buffer source_line =
+  let jump source_window source_buffer source_line =
+    if source_window > 0 then
+      ignore (Freight_effect.nvim_call "nvim_set_current_win" [ Msgpck.Int source_window ]);
     ignore (Freight_effect.nvim_call "nvim_command"
       [ Msgpck.String (Printf.sprintf "buffer %d" source_buffer) ]);
     ignore (Freight_effect.nvim_call "nvim_win_set_cursor"
@@ -353,9 +361,9 @@ let freight_jump_run_all state line_number =
   match run_all_result_at_line state.State.run_all_results line_number with
   | None -> show_error "No run-all entry at that line."
   | Some (State.Run_all_success entry) ->
-    jump entry.source_buffer entry.source_line
+    jump entry.source_window entry.source_buffer entry.source_line
   | Some (State.Run_all_failure entry) ->
-    jump entry.source_buffer entry.source_line
+    jump entry.source_window entry.source_buffer entry.source_line
 
 let freight_view_run_all state line_number =
   match run_all_result_at_line state.State.run_all_results line_number with

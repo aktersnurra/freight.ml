@@ -37,6 +37,7 @@ type t = {
   mutable verbose_output : string option;
   mutable history : history_entry list;
   mutable run_all_results : run_all_result list;
+  mutable run_all_summary : string list;
 }
 
 let history_cap = 50
@@ -50,6 +51,7 @@ let create () = {
   verbose_output = None;
   history = [];
   run_all_results = [];
+  run_all_summary = [];
 }
 
 let set_active_env state env_name =

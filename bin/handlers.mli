@@ -7,6 +7,7 @@ val freight_run : State.t -> unit
 val freight_run_all : State.t -> unit
 val freight_jump_run_all : State.t -> int -> unit
 val freight_view_run_all : State.t -> int -> unit
+val freight_run_all_summary : State.t -> unit
 val freight_view : State.t -> string -> unit
 val freight_history : State.t -> unit
 val freight_view_history : State.t -> int -> unit

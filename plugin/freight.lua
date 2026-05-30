@@ -51,6 +51,10 @@ vim.api.nvim_create_user_command("FreightJumpRunAll", function(opts)
   call_rpc("FreightJumpRunAll", opts.args)
 end, { nargs = 1, desc = "Jump to a Freight run-all source request" })
 
+vim.api.nvim_create_user_command("FreightRunAllSummary", function()
+  call_rpc("FreightRunAllSummary")
+end, { desc = "Return to the latest Freight run-all summary" })
+
 vim.api.nvim_create_user_command("FreightInspect", function()
   call_rpc("FreightInspect")
 end, { desc = "Show parsed request details" })

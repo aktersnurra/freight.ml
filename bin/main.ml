@@ -27,6 +27,7 @@ let register_commands ~call channel =
   cmd "FreightView"        `Required "FreightView";
   cmd "FreightViewRunAll"  `Required "FreightViewRunAll";
   cmd "FreightJumpRunAll"  `Required "FreightJumpRunAll";
+  cmd "FreightRunAllSummary" `None   "FreightRunAllSummary";
   cmd "FreightHelp"        `None     "FreightHelp";
   cmd "FreightHistory"     `None     "FreightHistory";
   cmd "FreightViewHistory" `Required "FreightViewHistory"
@@ -86,6 +87,9 @@ let dispatch state method_ params =
       | _ -> 1
     in
     Handlers.freight_jump_run_all state line_number;
+    Msgpck.Nil
+  | "FreightRunAllSummary" ->
+    Handlers.freight_run_all_summary state;
     Msgpck.Nil
   | "FreightHelp" ->
     Handlers.freight_help state;

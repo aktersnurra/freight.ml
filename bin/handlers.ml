@@ -357,7 +357,13 @@ let run_all_result_at_line results line_number =
 
 let freight_jump_run_all state line_number =
   let jump source_window source_buffer source_line =
-    if source_window > 0 then
+    let source_window_valid =
+      source_window > 0
+      && match Freight_effect.nvim_call "nvim_win_is_valid" [ Msgpck.Int source_window ] with
+         | Msgpck.Bool true -> true
+         | _ -> false
+    in
+    if source_window_valid then
       ignore (Freight_effect.nvim_call "nvim_set_current_win" [ Msgpck.Int source_window ]);
     ignore (Freight_effect.nvim_call "nvim_command"
       [ Msgpck.String (Printf.sprintf "buffer %d" source_buffer) ]);

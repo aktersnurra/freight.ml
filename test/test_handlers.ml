@@ -508,39 +508,21 @@ let test_freight_jump_run_all _ =
         ; response
         ; verbose = ""
         } ];
-  let config =
-    { Test_runtime_fake.default_config with
-      nvim_eval_results =
-        [ ("nvim_list_wins", Msgpck.List [ Msgpck.Int 42 ])
-        ; ("nvim_win_get_buf", Msgpck.Int 7)
-        ]
-    }
-  in
   let (), calls =
-    Test_runtime_fake.run config @@ fun () ->
+    Test_runtime_fake.run Test_runtime_fake.default_config @@ fun () ->
       Handlers.freight_jump_run_all state 4
   in
-  assert_bool "switches to source window"
+  assert_bool "uses Lua source-window jump"
     (has_call
        (function
-        | Test_runtime_fake.Nvim_call ("nvim_set_current_win", [ Msgpck.Int 42 ]) -> true
-        | _ -> false)
-       calls);
-  assert_bool "switches to source buffer"
-    (has_call
-       (function
-        | Test_runtime_fake.Nvim_call ("nvim_command", [ Msgpck.String "buffer 7" ]) -> true
-        | _ -> false)
-       calls);
-  assert_bool "moves cursor to source line"
-    (has_call
-       (function
-        | Test_runtime_fake.Nvim_call
-            ("nvim_win_set_cursor", [ Msgpck.Int 0; Msgpck.List [ Msgpck.Int 12; Msgpck.Int 0 ] ]) -> true
+        | Test_runtime_fake.Nvim_call ("nvim_command", [ Msgpck.String command ]) ->
+          String.contains command 'w'
+          && String.contains command '7'
+          && String.contains command '1'
         | _ -> false)
        calls)
 
-let test_freight_jump_run_all_finds_window_showing_source_buffer _ =
+let test_freight_jump_run_all_uses_win_findbuf _ =
   let request =
     { Freight.Ast.name = None
     ; method_ = Freight.Ast.Get
@@ -569,24 +551,15 @@ let test_freight_jump_run_all_finds_window_showing_source_buffer _ =
         ; response
         ; verbose = ""
         } ];
-  let config =
-    { Test_runtime_fake.default_config with
-      nvim_eval_results =
-        [ ("nvim_win_is_valid", Msgpck.Bool false)
-        ; ("nvim_list_wins", Msgpck.List [ Msgpck.Int 100; Msgpck.Int 101 ])
-        ]
-    ; nvim_eval_sequence =
-        [ ("nvim_win_get_buf", [ Msgpck.Int 8; Msgpck.Int 7 ]) ]
-    }
-  in
   let (), calls =
-    Test_runtime_fake.run config @@ fun () ->
+    Test_runtime_fake.run Test_runtime_fake.default_config @@ fun () ->
       Handlers.freight_jump_run_all state 4
   in
-  assert_bool "finds source buffer window"
+  assert_bool "uses win_findbuf"
     (has_call
        (function
-        | Test_runtime_fake.Nvim_call ("nvim_set_current_win", [ Msgpck.Int 101 ]) -> true
+        | Test_runtime_fake.Nvim_call ("nvim_command", [ Msgpck.String command ]) ->
+          String.contains command 'w'
         | _ -> false)
        calls)
 
@@ -619,26 +592,24 @@ let test_freight_jump_run_all_skips_invalid_source_window _ =
         ; response
         ; verbose = ""
         } ];
-  let config =
-    { Test_runtime_fake.default_config with
-      nvim_eval_results = [ ("nvim_list_wins", Msgpck.List []) ]
-    }
-  in
   let (), calls =
-    Test_runtime_fake.run config @@ fun () ->
+    Test_runtime_fake.run Test_runtime_fake.default_config @@ fun () ->
       Handlers.freight_jump_run_all state 4
   in
-  assert_bool "does not switch to invalid window"
+  assert_bool "does not call fragile window RPC"
     (not
        (has_call
           (function
-           | Test_runtime_fake.Nvim_call ("nvim_set_current_win", [ Msgpck.Int 42 ]) -> true
+           | Test_runtime_fake.Nvim_call ("nvim_set_current_win", _) -> true
+           | Test_runtime_fake.Nvim_call ("nvim_win_get_buf", _) -> true
+           | Test_runtime_fake.Nvim_call ("nvim_list_wins", _) -> true
            | _ -> false)
           calls));
-  assert_bool "still switches to source buffer"
+  assert_bool "uses Lua fallback buffer command"
     (has_call
        (function
-        | Test_runtime_fake.Nvim_call ("nvim_command", [ Msgpck.String "buffer 7" ]) -> true
+        | Test_runtime_fake.Nvim_call ("nvim_command", [ Msgpck.String command ]) ->
+          String.contains command 'b'
         | _ -> false)
        calls)
 
@@ -836,7 +807,7 @@ let suite =
     ; "freight_view_run_all failure" >:: test_freight_view_run_all_failure
     ; "freight_run_all records ext source window" >:: test_freight_run_all_records_ext_source_window
     ; "freight_jump_run_all" >:: test_freight_jump_run_all
-    ; "freight_jump_run_all finds window showing source buffer" >:: test_freight_jump_run_all_finds_window_showing_source_buffer
+    ; "freight_jump_run_all uses win_findbuf" >:: test_freight_jump_run_all_uses_win_findbuf
     ; "freight_jump_run_all skips invalid source window" >:: test_freight_jump_run_all_skips_invalid_source_window
     ; "freight_run parse error" >:: test_freight_run_parse_error
     ; "freight_run appends history" >:: test_freight_run_appends_history

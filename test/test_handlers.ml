@@ -533,6 +533,56 @@ let test_freight_jump_run_all _ =
         | _ -> false)
        calls)
 
+let test_freight_jump_run_all_finds_window_showing_source_buffer _ =
+  let request =
+    { Freight.Ast.name = None
+    ; method_ = Freight.Ast.Get
+    ; url = "https://example.com/ok"
+    ; headers = []
+    ; body = Freight.Ast.Body_none
+    }
+  in
+  let response =
+    { Freight.Ast.status = 200
+    ; status_text = "OK"
+    ; headers = []
+    ; body = "hello"
+    ; duration_ms = 10
+    ; request
+    }
+  in
+  let state = State.create () in
+  state.State.run_all_results <-
+    [ State.Run_all_success
+        { line_number = 1
+        ; source_buffer = 7
+        ; source_window = 42
+        ; source_line = 12
+        ; request
+        ; response
+        ; verbose = ""
+        } ];
+  let config =
+    { Test_runtime_fake.default_config with
+      nvim_eval_results =
+        [ ("nvim_win_is_valid", Msgpck.Bool false)
+        ; ("nvim_list_wins", Msgpck.List [ Msgpck.Int 100; Msgpck.Int 101 ])
+        ]
+    ; nvim_eval_sequence =
+        [ ("nvim_win_get_buf", [ Msgpck.Int 8; Msgpck.Int 7 ]) ]
+    }
+  in
+  let (), calls =
+    Test_runtime_fake.run config @@ fun () ->
+      Handlers.freight_jump_run_all state 4
+  in
+  assert_bool "finds source buffer window"
+    (has_call
+       (function
+        | Test_runtime_fake.Nvim_call ("nvim_set_current_win", [ Msgpck.Int 101 ]) -> true
+        | _ -> false)
+       calls)
+
 let test_freight_jump_run_all_skips_invalid_source_window _ =
   let request =
     { Freight.Ast.name = None
@@ -781,6 +831,7 @@ let suite =
     ; "freight_view_run_all failure" >:: test_freight_view_run_all_failure
     ; "freight_run_all records ext source window" >:: test_freight_run_all_records_ext_source_window
     ; "freight_jump_run_all" >:: test_freight_jump_run_all
+    ; "freight_jump_run_all finds window showing source buffer" >:: test_freight_jump_run_all_finds_window_showing_source_buffer
     ; "freight_jump_run_all skips invalid source window" >:: test_freight_jump_run_all_skips_invalid_source_window
     ; "freight_run parse error" >:: test_freight_run_parse_error
     ; "freight_run appends history" >:: test_freight_run_appends_history

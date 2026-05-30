@@ -23,6 +23,8 @@ type config =
   ; curl_result : (string, string) result
   ; curl_verbose_result : (string, string) result
   ; nvim_eval_result : Msgpck.t
+  ; nvim_eval_results : (string * Msgpck.t) list
+  ; nvim_eval_sequence : (string * Msgpck.t list) list
   ; fork_mode : [ `Run_immediately | `Capture_only ]
   }
 
@@ -35,6 +37,8 @@ let default_config =
   ; curl_result = Ok ""
   ; curl_verbose_result = Ok ""
   ; nvim_eval_result = Msgpck.Int (-1)
+  ; nvim_eval_results = []
+  ; nvim_eval_sequence = []
   ; fork_mode = `Run_immediately
   }
 
@@ -109,7 +113,23 @@ let rec run config f =
             | Freight_effect.Nvim_call (method_, params) ->
               Some (fun (k : (a, _) Effect.Deep.continuation) ->
                 log (Nvim_call (method_, params));
-                Effect.Deep.continue k config.nvim_eval_result)
+                let sequence_count =
+                  List.fold_left
+                    (fun count -> function
+                      | Nvim_call (m, _) when m = method_ -> count + 1
+                      | _ -> count)
+                    0 !calls
+                in
+                let result =
+                  match List.assoc_opt method_ config.nvim_eval_sequence with
+                  | Some values when List.length values >= sequence_count ->
+                    List.nth values (sequence_count - 1)
+                  | _ ->
+                    (match List.assoc_opt method_ config.nvim_eval_results with
+                     | Some value -> value
+                     | None -> config.nvim_eval_result)
+                in
+                Effect.Deep.continue k result)
             | _ -> None)
       }
   in

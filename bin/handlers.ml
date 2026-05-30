@@ -356,15 +356,31 @@ let run_all_result_at_line results line_number =
   List.assoc_opt line_number indexed_lines
 
 let freight_jump_run_all state line_number =
+  let window_buffer win =
+    Freight_effect.nvim_call "nvim_win_get_buf" [ Msgpck.Int win ] |> decode_handle
+  in
+  let find_source_window source_buffer =
+    match Freight_effect.nvim_call "nvim_list_wins" [] with
+    | Msgpck.List wins ->
+      wins
+      |> List.filter_map (function Msgpck.Int win -> Some win | Msgpck.Ext (_, s) -> Some (ext_to_int s) | _ -> None)
+      |> List.find_opt (fun win -> window_buffer win = source_buffer)
+    | _ -> None
+  in
   let jump source_window source_buffer source_line =
-    let source_window_valid =
-      source_window > 0
-      && match Freight_effect.nvim_call "nvim_win_is_valid" [ Msgpck.Int source_window ] with
-         | Msgpck.Bool true -> true
-         | _ -> false
+    let target_window =
+      match find_source_window source_buffer with
+      | Some win -> Some win
+      | None ->
+        if source_window > 0 then
+          match Freight_effect.nvim_call "nvim_win_is_valid" [ Msgpck.Int source_window ] with
+          | Msgpck.Bool true -> Some source_window
+          | _ -> None
+        else None
     in
-    if source_window_valid then
-      ignore (Freight_effect.nvim_call "nvim_set_current_win" [ Msgpck.Int source_window ]);
+    Option.iter
+      (fun win -> ignore (Freight_effect.nvim_call "nvim_set_current_win" [ Msgpck.Int win ]))
+      target_window;
     ignore (Freight_effect.nvim_call "nvim_command"
       [ Msgpck.String (Printf.sprintf "buffer %d" source_buffer) ]);
     ignore (Freight_effect.nvim_call "nvim_win_set_cursor"

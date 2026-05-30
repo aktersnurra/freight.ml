@@ -383,10 +383,9 @@ let freight_view_run_all state line_number =
     state.State.last_response <- Some entry.response;
     state.State.verbose_output <-
       (if entry.verbose = "" then None else Some entry.verbose);
-    let buf =
-      Freight_effect.show_scratch ~name ~filetype
-        ~lines:(Freight.Response.render entry.response)
-    in
+    let buf = Freight_effect.current_buffer () in
+    Freight_effect.update_scratch buf ~name ~filetype
+      ~lines:(Freight.Response.render entry.response);
     set_buf_keymaps buf;
     set_response_keymaps buf;
     state.State.response_buf <- Some buf;
@@ -401,21 +400,19 @@ let freight_view_run_all state line_number =
        in
        state.State.last_response <- Some response;
        state.State.verbose_output <- None;
-       let buf =
-         Freight_effect.show_scratch ~name ~filetype
-           ~lines:(Freight.Response.render response)
-       in
+       let buf = Freight_effect.current_buffer () in
+       Freight_effect.update_scratch buf ~name ~filetype
+         ~lines:(Freight.Response.render response);
        set_buf_keymaps buf;
        set_response_keymaps buf;
        state.State.response_buf <- Some buf;
        state.State.response_buf_name <- Some name
      | None ->
-       let buf =
-         Freight_effect.show_scratch
-           ~name:"freight://run-all/failure"
-           ~filetype:"freight"
-           ~lines:[ "Request failed"; ""; request_label entry.request; ""; entry.message ]
-       in
+       let buf = Freight_effect.current_buffer () in
+       Freight_effect.update_scratch buf
+         ~name:"freight://run-all/failure"
+         ~filetype:"freight"
+         ~lines:[ "Request failed"; ""; request_label entry.request; ""; entry.message ];
        set_buf_keymaps buf)
 
 let freight_view state view_name =

@@ -347,12 +347,22 @@ let test_freight_run_all_http_failure_opens_response_detail _ =
         ; message = "400 Bad Request"
         ; response = Some response
         } ];
+  let config =
+    { Test_runtime_fake.default_config with
+      current_buffer = Freight_effect.Buffer_id.of_int 99
+    }
+  in
   let (), calls =
-    Test_runtime_fake.run Test_runtime_fake.default_config @@ fun () ->
+    Test_runtime_fake.run config @@ fun () ->
       Handlers.freight_view_run_all state 4
   in
-  assert_bool "opens HTTP failure response scratch"
-    (has_show_scratch ~name:"freight://response/post-example-com-post" calls)
+  assert_bool "updates current window with HTTP failure response"
+    (has_call
+       (function
+        | Test_runtime_fake.Update_scratch (99, view) ->
+          view.name = "freight://response/post-example-com-post"
+        | _ -> false)
+       calls)
 
 let test_freight_view_run_all_success _ =
   let request =
@@ -383,12 +393,24 @@ let test_freight_view_run_all_success _ =
         ; response
         ; verbose = ""
         } ];
+  let config =
+    { Test_runtime_fake.default_config with
+      current_buffer = Freight_effect.Buffer_id.of_int 99
+    }
+  in
   let (), calls =
-    Test_runtime_fake.run Test_runtime_fake.default_config @@ fun () ->
+    Test_runtime_fake.run config @@ fun () ->
       Handlers.freight_view_run_all state 4
   in
-  assert_bool "opens response scratch"
-    (has_show_scratch ~name:"freight://response/get-example-com-ok" calls)
+  assert_bool "does not open a new response split"
+    (not (has_show_scratch ~name:"freight://response/get-example-com-ok" calls));
+  assert_bool "updates current run-all window"
+    (has_call
+       (function
+        | Test_runtime_fake.Update_scratch (99, view) ->
+          view.name = "freight://response/get-example-com-ok"
+        | _ -> false)
+       calls)
 
 let test_freight_view_run_all_verbose_unavailable _ =
   let request =
@@ -450,12 +472,24 @@ let test_freight_view_run_all_failure _ =
         ; message = "curl failed"
         ; response = None
         } ];
+  let config =
+    { Test_runtime_fake.default_config with
+      current_buffer = Freight_effect.Buffer_id.of_int 99
+    }
+  in
   let (), calls =
-    Test_runtime_fake.run Test_runtime_fake.default_config @@ fun () ->
+    Test_runtime_fake.run config @@ fun () ->
       Handlers.freight_view_run_all state 4
   in
-  assert_bool "opens failure scratch"
-    (has_show_scratch ~name:"freight://run-all/failure" calls)
+  assert_bool "does not open failure split"
+    (not (has_show_scratch ~name:"freight://run-all/failure" calls));
+  assert_bool "updates current run-all window with failure"
+    (has_call
+       (function
+        | Test_runtime_fake.Update_scratch (99, view) ->
+          view.name = "freight://run-all/failure"
+        | _ -> false)
+       calls)
 
 let test_freight_run_all_records_ext_source_window _ =
   let raw_response =

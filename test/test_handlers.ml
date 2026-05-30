@@ -508,7 +508,14 @@ let test_freight_jump_run_all _ =
         ; response
         ; verbose = ""
         } ];
-  let config = { Test_runtime_fake.default_config with nvim_eval_result = Msgpck.Bool true } in
+  let config =
+    { Test_runtime_fake.default_config with
+      nvim_eval_results =
+        [ ("nvim_list_wins", Msgpck.List [ Msgpck.Int 42 ])
+        ; ("nvim_win_get_buf", Msgpck.Int 7)
+        ]
+    }
+  in
   let (), calls =
     Test_runtime_fake.run config @@ fun () ->
       Handlers.freight_jump_run_all state 4
@@ -612,17 +619,15 @@ let test_freight_jump_run_all_skips_invalid_source_window _ =
         ; response
         ; verbose = ""
         } ];
-  let config = { Test_runtime_fake.default_config with nvim_eval_result = Msgpck.Bool false } in
+  let config =
+    { Test_runtime_fake.default_config with
+      nvim_eval_results = [ ("nvim_list_wins", Msgpck.List []) ]
+    }
+  in
   let (), calls =
     Test_runtime_fake.run config @@ fun () ->
       Handlers.freight_jump_run_all state 4
   in
-  assert_bool "checks source window validity"
-    (has_call
-       (function
-        | Test_runtime_fake.Nvim_call ("nvim_win_is_valid", [ Msgpck.Int 42 ]) -> true
-        | _ -> false)
-       calls);
   assert_bool "does not switch to invalid window"
     (not
        (has_call

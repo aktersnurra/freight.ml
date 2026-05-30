@@ -372,19 +372,8 @@ let freight_jump_run_all state line_number =
       |> List.find_opt (fun win -> window_buffer win = source_buffer)
     | _ -> None
   in
-  let window_is_valid win =
-    win > 0
-    && match nvim_call_opt "nvim_win_is_valid" [ Msgpck.Int win ] with
-       | Some (Msgpck.Bool true) -> true
-       | _ -> false
-  in
-  let jump source_window source_buffer source_line =
-    let target_window =
-      match find_source_window source_buffer with
-      | Some win -> Some win
-      | None when window_is_valid source_window -> Some source_window
-      | None -> None
-    in
+  let jump _source_window source_buffer source_line =
+    let target_window = find_source_window source_buffer in
     Option.iter
       (fun win -> ignore (nvim_call_opt "nvim_set_current_win" [ Msgpck.Int win ]))
       target_window;

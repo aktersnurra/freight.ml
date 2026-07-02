@@ -47,14 +47,41 @@ let resolve_env state buf =
     Freight.Env.overlay ~base ~over:state.State.env
   | None -> state.State.env
 
-(* The active resolver: response-chaining vars (deep, lazy) take precedence over
-   .env / accumulated env values. *)
+(* Resolver sources that reach the OS, built here (lib/ stays pure). *)
+
+(* {{$env.NAME}} reads OS environment variable NAME. *)
+let dollar_env_source : Freight.Resolver.source =
+ fun reference ->
+  if String.length reference > 5 && String.sub reference 0 5 = "$env." then
+    Freight_effect.get_env (String.sub reference 5 (String.length reference - 5))
+  else None
+
+(* Bare {{VAR}} falls back to the OS environment; placed LAST so .env wins. *)
+let os_env_source : Freight.Resolver.source = fun reference -> Freight_effect.get_env reference
+
+let generated_env : Freight.Generated.env =
+  { now = Freight_effect.now
+  ; random_int = Freight_effect.random_int
+  ; iso_of_epoch =
+      (fun t ->
+        let tm = Unix.gmtime t in
+        Printf.sprintf "%04d-%02d-%02dT%02d:%02d:%02dZ" (tm.Unix.tm_year + 1900)
+          (tm.tm_mon + 1) tm.tm_mday tm.tm_hour tm.tm_min tm.tm_sec)
+  }
+
+(* Precedence (first wins): generated values, then $env, then response-chaining,
+   then .env, then a bare-{{VAR}} OS-environment fallback. *)
+let resolver_sources env responses =
+  [ Freight.Generated.source generated_env
+  ; dollar_env_source
+  ; Freight.Response_store.source responses
+  ; Freight.Env.source env
+  ; os_env_source
+  ]
+
 let build_resolver state buf =
   let env = resolve_env state buf in
-  Freight.Resolver.make
-    [ Freight.Response_store.source state.State.responses
-    ; Freight.Env.source env
-    ]
+  Freight.Resolver.make (resolver_sources env state.State.responses)
 
 let resolve_request state source cursor_line buf =
   let resolver = build_resolver state buf in
@@ -428,13 +455,10 @@ let freight_run_all state =
         (fun index (source_line, raw_request) ->
           let line_number = index + 1 in
           let source_buffer = buf in
-          (* Resolve against the response store (which accrues earlier responses
-             this run) layered over the loaded env. *)
+          (* Same source precedence as single-run: generated / $env / chaining /
+             .env / OS fallback. The store accrues earlier responses this run. *)
           let resolver =
-            Freight.Resolver.make
-              [ Freight.Response_store.source state.State.responses
-              ; Freight.Env.source base_env
-              ]
+            Freight.Resolver.make (resolver_sources base_env state.State.responses)
           in
           let request =
             raw_request

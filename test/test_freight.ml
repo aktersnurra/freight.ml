@@ -1066,6 +1066,34 @@ let test_json_path_lookup_non_scalar_leaf _ =
   assert_equal None
     (Freight.Json_path.lookup json (Freight.Json_path.parse "data"))
 
+let test_resolver_first_source_wins _ =
+  let a = fun ref -> if ref = "x" then Some "A" else None in
+  let b = fun ref -> if ref = "x" then Some "B" else None in
+  let r = Freight.Resolver.make [ a; b ] in
+  assert_equal "A" (Freight.Resolver.resolve r "{{x}}")
+
+let test_resolver_falls_through _ =
+  let a = fun ref -> if ref = "x" then Some "A" else None in
+  let b = fun ref -> if ref = "y" then Some "B" else None in
+  let r = Freight.Resolver.make [ a; b ] in
+  assert_equal "A-B" (Freight.Resolver.resolve r "{{x}}-{{y}}")
+
+let test_resolver_unknown_left_literal _ =
+  let r = Freight.Resolver.make [ (fun _ -> None) ] in
+  assert_equal "{{ missing }}" (Freight.Resolver.resolve r "{{ missing }}")
+
+let test_resolver_trims_ref _ =
+  let seen = ref "" in
+  let r = Freight.Resolver.make [ (fun ref -> seen := ref; Some "v") ] in
+  ignore (Freight.Resolver.resolve r "{{  spaced  }}");
+  assert_equal "spaced" !seen
+
+let test_resolver_unresolved _ =
+  let a = fun ref -> if ref = "x" then Some "A" else None in
+  let r = Freight.Resolver.make [ a ] in
+  assert_equal [ "y"; "z" ]
+    (Freight.Resolver.unresolved r "{{x}} {{z}} {{y}} {{z}}")
+
 let suite =
   "freight"
   >::: [
@@ -1168,6 +1196,11 @@ let suite =
          "json_path_lookup_array" >:: test_json_path_lookup_array;
          "json_path_lookup_missing" >:: test_json_path_lookup_missing;
          "json_path_lookup_non_scalar_leaf" >:: test_json_path_lookup_non_scalar_leaf;
+         "resolver_first_source_wins" >:: test_resolver_first_source_wins;
+         "resolver_falls_through" >:: test_resolver_falls_through;
+         "resolver_unknown_left_literal" >:: test_resolver_unknown_left_literal;
+         "resolver_trims_ref" >:: test_resolver_trims_ref;
+         "resolver_unresolved" >:: test_resolver_unresolved;
        ]
 
 let () = run_test_tt_main suite

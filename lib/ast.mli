@@ -10,9 +10,21 @@ type method_ =
   | Connect
   | Custom of string
 
+type part_content =
+  | Part_text of string
+  | Part_file of string
+
+type multipart_part = {
+  part_name : string;
+  filename : string option;
+  content_type : string option;
+  content : part_content;
+}
+
 type body =
   | Body_inline of string
   | Body_file of string
+  | Body_multipart of multipart_part list
   | Body_none
 
 type request = {

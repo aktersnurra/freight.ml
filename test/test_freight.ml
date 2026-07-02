@@ -334,6 +334,91 @@ let test_request_at_cursor_trailing_comment_is_none _ =
   (* line 9 is a comment-only block after the last request *)
   assert_equal None (Freight.Parser.request_at_cursor cursor_source 9)
 
+let multipart_source =
+  String.concat "\n"
+    [ "# @name upload"
+    ; "POST https://api.example.com/imports"
+    ; "Content-Type: multipart/form-data; boundary=boundary"
+    ; ""
+    ; "--boundary"
+    ; "Content-Disposition: form-data; name=\"file\"; filename=\"filled.xlsx\""
+    ; "Content-Type: application/vnd.ms-excel"
+    ; ""
+    ; "< ./filled.xlsx"
+    ; "--boundary"
+    ; "Content-Disposition: form-data; name=\"note\""
+    ; ""
+    ; "hello from freight"
+    ; "--boundary--"
+    ]
+
+let test_parse_multipart_body _ =
+  let file = parse_ok multipart_source in
+  match file.requests with
+  | [ request ] -> (
+      (* the multipart Content-Type header is dropped so curl owns the boundary *)
+      assert_equal [] request.Freight.Ast.headers;
+      match request.body with
+      | Freight.Ast.Body_multipart [ file_part; note_part ] ->
+          assert_equal "file" file_part.Freight.Ast.part_name;
+          assert_equal (Some "filled.xlsx") file_part.filename;
+          assert_equal (Some "application/vnd.ms-excel") file_part.content_type;
+          assert_equal (Freight.Ast.Part_file "./filled.xlsx") file_part.content;
+          assert_equal "note" note_part.Freight.Ast.part_name;
+          assert_equal None note_part.filename;
+          assert_equal (Freight.Ast.Part_text "hello from freight") note_part.content
+      | _ -> assert_failure "expected two multipart parts")
+  | _ -> assert_failure "expected one request"
+
+let test_to_curl_multipart _ =
+  let file = parse_ok multipart_source in
+  match file.requests with
+  | [ request ] ->
+      let invocation = Freight.Executor.to_curl request in
+      assert_bool "uses -F"
+        (List.mem "-F" invocation.args);
+      assert_bool "file part with type and filename"
+        (List.mem
+           "file=@./filled.xlsx;type=application/vnd.ms-excel;filename=filled.xlsx"
+           invocation.args);
+      assert_bool "text part"
+        (List.mem "note=hello from freight" invocation.args);
+      assert_bool "does not emit raw multipart content-type header"
+        (not
+           (List.mem "Content-Type: multipart/form-data; boundary=boundary"
+              invocation.args));
+      assert_bool "does not use --data-binary"
+        (not (List.mem "--data-binary" invocation.args))
+  | _ -> assert_failure "expected one request"
+
+let test_substitute_request_expands_multipart _ =
+  let env = Freight.Env.of_list [ ("DIR", "/tmp"); ("NOTE", "hi") ] in
+  let request =
+    { Freight.Ast.name = None
+    ; method_ = Freight.Ast.Post
+    ; url = "https://api.example.com/imports"
+    ; headers = []
+    ; body =
+        Freight.Ast.Body_multipart
+          [ { part_name = "file"
+            ; filename = Some "x.txt"
+            ; content_type = None
+            ; content = Freight.Ast.Part_file "{{DIR}}/x.txt"
+            }
+          ; { part_name = "note"
+            ; filename = None
+            ; content_type = None
+            ; content = Freight.Ast.Part_text "{{NOTE}}"
+            }
+          ]
+    }
+  in
+  match (Freight.Resolve.substitute_request env request).body with
+  | Freight.Ast.Body_multipart [ file_part; note_part ] ->
+      assert_equal (Freight.Ast.Part_file "/tmp/x.txt") file_part.content;
+      assert_equal (Freight.Ast.Part_text "hi") note_part.content
+  | _ -> assert_failure "expected two parts"
+
 let test_env_overlay_over_wins _ =
   let base = Freight.Env.of_list [ ("host", "base"); ("only_base", "b") ] in
   let over = Freight.Env.of_list [ ("host", "over"); ("only_over", "o") ] in
@@ -884,6 +969,9 @@ let suite =
          >:: test_request_at_cursor_blank_gap_is_none;
          "request_at_cursor_trailing_comment_is_none"
          >:: test_request_at_cursor_trailing_comment_is_none;
+         "parse_multipart_body" >:: test_parse_multipart_body;
+         "to_curl_multipart" >:: test_to_curl_multipart;
+         "substitute_request_expands_multipart" >:: test_substitute_request_expands_multipart;
          "env_overlay_over_wins" >:: test_env_overlay_over_wins;
          "unresolved_request_reports_missing" >:: test_unresolved_request_reports_missing;
          "unresolved_request_empty_when_resolved"

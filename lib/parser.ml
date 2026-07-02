@@ -86,6 +86,97 @@ let parse_body lines =
       else Ast.Body_inline (String.concat "\n" body_lines)
   | _ -> Ast.Body_inline (String.concat "\n" body_lines)
 
+let lower = String.lowercase_ascii
+
+(* [multipart_boundary headers] returns the boundary declared on a
+   [Content-Type: multipart/form-data; boundary=...] header, if any. *)
+let multipart_boundary headers =
+  List.find_map
+    (fun (name, value) ->
+      if lower name = "content-type" && starts_with ~prefix:"multipart/form-data" (lower (trim value)) then
+        value
+        |> String.split_on_char ';'
+        |> List.find_map (fun param ->
+               match String.index_opt param '=' with
+               | Some index when lower (trim (String.sub param 0 index)) = "boundary" ->
+                   Some (String.sub param (index + 1) (String.length param - index - 1) |> trim)
+               | _ -> None)
+      else None)
+    headers
+
+(* Extract a quoted or bare parameter [key] from a Content-Disposition value,
+   e.g. [name="file"] or [name=file]. *)
+let disposition_param value key =
+  value
+  |> String.split_on_char ';'
+  |> List.find_map (fun param ->
+         match String.index_opt param '=' with
+         | Some index when lower (trim (String.sub param 0 index)) = key ->
+             let raw = String.sub param (index + 1) (String.length param - index - 1) |> trim in
+             let unquoted =
+               let length = String.length raw in
+               if length >= 2 && raw.[0] = '"' && raw.[length - 1] = '"' then
+                 String.sub raw 1 (length - 2)
+               else raw
+             in
+             Some unquoted
+         | _ -> None)
+
+(* Split multipart body lines on [--boundary] delimiters, dropping the final
+   [--boundary--] terminator. Each returned chunk is one part's raw lines. *)
+let split_multipart ~boundary lines =
+  let delimiter = "--" ^ boundary in
+  let terminator = delimiter ^ "--" in
+  let rec loop parts current started = function
+    | [] -> if started then List.rev (List.rev current :: parts) else List.rev parts
+    | line :: _ when trim line = terminator ->
+        if started then List.rev (List.rev current :: parts) else List.rev parts
+    | line :: rest when trim line = delimiter ->
+        let parts = if started then List.rev current :: parts else parts in
+        loop parts [] true rest
+    | line :: rest -> loop parts (line :: current) started rest
+  in
+  loop [] [] false lines
+
+let parse_part chunk =
+  let header_lines, value_lines = split_at_blank chunk in
+  let part_headers = List.filter_map parse_header header_lines in
+  let disposition =
+    List.find_map
+      (fun (name, value) -> if lower name = "content-disposition" then Some value else None)
+      part_headers
+  in
+  match disposition with
+  | None -> None
+  | Some disposition ->
+      let part_name =
+        match disposition_param disposition "name" with Some name -> name | None -> ""
+      in
+      let filename = disposition_param disposition "filename" in
+      let content_type =
+        List.find_map
+          (fun (name, value) -> if lower name = "content-type" then Some value else None)
+          part_headers
+      in
+      let value_lines =
+        value_lines
+        |> drop_while (fun line -> trim line = "")
+        |> List.rev
+        |> drop_while (fun line -> trim line = "")
+        |> List.rev
+      in
+      let content =
+        match value_lines with
+        | [ line ] when starts_with ~prefix:"<" (trim line) ->
+            let path = String.sub (trim line) 1 (String.length (trim line) - 1) |> trim in
+            Ast.Part_file path
+        | _ -> Ast.Part_text (String.concat "\n" value_lines)
+      in
+      Some { Ast.part_name; filename; content_type; content }
+
+let parse_multipart ~boundary body_lines =
+  split_multipart ~boundary body_lines |> List.filter_map parse_part
+
 let parse_block ~start_line block =
   let rec skip_leading_metadata line_number name = function
     | [] -> make_error ~line:line_number "missing request line"
@@ -103,14 +194,20 @@ let parse_block ~start_line block =
             | Ok (method_, url) ->
                 let header_lines, body_lines = split_at_blank rest in
                 let headers = List.filter_map parse_header header_lines in
-                Ok
-                  {
-                    Ast.name;
-                    method_;
-                    url;
-                    headers;
-                    body = parse_body body_lines;
-                  }))
+                let headers, body =
+                  match multipart_boundary headers with
+                  | Some boundary ->
+                      (* Drop the multipart Content-Type header: curl regenerates
+                         the boundary and sets the header itself. *)
+                      let headers =
+                        List.filter
+                          (fun (name, _) -> lower name <> "content-type")
+                          headers
+                      in
+                      (headers, Ast.Body_multipart (parse_multipart ~boundary body_lines))
+                  | None -> (headers, parse_body body_lines)
+                in
+                Ok { Ast.name; method_; url; headers; body }))
   in
   skip_leading_metadata start_line None block
 

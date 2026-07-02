@@ -5,9 +5,27 @@ type invocation = {
 
 let header_arg (key, value) = [ "-H"; key ^ ": " ^ value ]
 
+let part_arg (part : Ast.multipart_part) =
+  match part.content with
+  | Ast.Part_text value -> [ "-F"; part.part_name ^ "=" ^ value ]
+  | Ast.Part_file path ->
+      let spec = part.part_name ^ "=@" ^ path in
+      let spec =
+        match part.content_type with
+        | Some content_type -> spec ^ ";type=" ^ content_type
+        | None -> spec
+      in
+      let spec =
+        match part.filename with
+        | Some filename -> spec ^ ";filename=" ^ filename
+        | None -> spec
+      in
+      [ "-F"; spec ]
+
 let body_args method_ = function
   | Ast.Body_none -> []
   | Body_inline body -> [ "--data-binary"; body ]
+  | Body_multipart parts -> List.concat_map part_arg parts
   | Body_file path -> (
       match method_ with
       | Ast.Put -> [ "-T"; path ]

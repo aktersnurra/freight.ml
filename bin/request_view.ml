@@ -1,7 +1,16 @@
+let render_part (part : Freight.Ast.multipart_part) =
+  let value =
+    match part.content with
+    | Freight.Ast.Part_text text -> text
+    | Freight.Ast.Part_file path -> "file " ^ path
+  in
+  Printf.sprintf "  %s: %s" part.part_name value
+
 let render_body = function
   | Freight.Ast.Body_none -> [ "Body: <none>" ]
   | Body_inline body -> [ "Body:"; body ]
   | Body_file path -> [ "Body: file " ^ path ]
+  | Body_multipart parts -> "Body: multipart" :: List.map render_part parts
 
 let render_headers headers =
   match headers with

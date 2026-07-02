@@ -137,6 +137,29 @@ Authorization: Bearer {{login.response.body.token}}
 - `{{KEY}}` substitutes values from `.env` files
 - `< path/to/file.json` sends a file body
 
+### Multipart uploads
+
+Set `Content-Type: multipart/form-data; boundary=...` and describe each part in
+its own block. File parts use `<`; freight lets curl own the boundary, so the
+declared `Content-Type` header is dropped from the emitted request.
+
+```http
+# @name upload
+POST {{BASE_URL}}/imports
+Content-Type: multipart/form-data; boundary=boundary
+
+--boundary
+Content-Disposition: form-data; name="file"; filename="filled.xlsx"
+Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+
+< ./filled.xlsx
+--boundary
+Content-Disposition: form-data; name="note"
+
+hello from freight
+--boundary--
+```
+
 ## Environment files
 
 freight.ml walks up from the `.http` file's directory and merges, in order:

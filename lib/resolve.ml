@@ -5,10 +5,23 @@ type error =
 
 let substitute_request env (request : Ast.request) =
   let sub = Env.substitute env in
+  let sub_part (part : Ast.multipart_part) =
+    let content =
+      match part.content with
+      | Ast.Part_text value -> Ast.Part_text (sub value)
+      | Ast.Part_file path -> Ast.Part_file (sub path)
+    in
+    { part with
+      Ast.filename = Option.map sub part.filename
+    ; content_type = Option.map sub part.content_type
+    ; content
+    }
+  in
   let body =
     match request.body with
     | Ast.Body_inline s -> Ast.Body_inline (sub s)
     | Ast.Body_file path -> Ast.Body_file (sub path)
+    | Ast.Body_multipart parts -> Ast.Body_multipart (List.map sub_part parts)
     | Ast.Body_none as other -> other
   in
   { request with
@@ -17,11 +30,20 @@ let substitute_request env (request : Ast.request) =
   ; body
   }
 
+let part_strings (part : Ast.multipart_part) =
+  let content =
+    match part.content with
+    | Ast.Part_text value -> value
+    | Ast.Part_file path -> path
+  in
+  content :: Option.to_list part.filename @ Option.to_list part.content_type
+
 let request_strings (request : Ast.request) =
   let body =
     match request.body with
     | Ast.Body_inline s -> [ s ]
     | Ast.Body_file path -> [ path ]
+    | Ast.Body_multipart parts -> List.concat_map part_strings parts
     | Ast.Body_none -> []
   in
   (request.url :: List.map snd request.headers) @ body

@@ -66,11 +66,14 @@ let unresolved_request_r resolver request =
 let unresolved_request env request =
   unresolved_request_r (Resolver.make [ Env.source env ]) request
 
-let at_cursor ~source ~cursor_line ~env =
+let at_cursor_r ~source ~cursor_line ~resolver =
   match Parser.request_at_cursor source cursor_line with
   | None ->
     (match Parser.parse_string source with
      | Error err -> Error (`Parse err)
      | Ok _ -> Error `No_request)
   | Some request ->
-    Ok (Ast.apply_host_header (substitute_request env request))
+    Ok (Ast.apply_host_header (substitute_request_r resolver request))
+
+let at_cursor ~source ~cursor_line ~env =
+  at_cursor_r ~source ~cursor_line ~resolver:(Resolver.make [ Env.source env ])

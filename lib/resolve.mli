@@ -17,6 +17,12 @@ val substitute_request_r : Resolver.t -> Ast.request -> Ast.request
 val unresolved_request_r : Resolver.t -> Ast.request -> string list
 (** Like {!unresolved_request} but driven by an arbitrary resolver. *)
 
+val at_cursor_r :
+  source:string ->
+  cursor_line:int ->
+  resolver:Resolver.t ->
+  (Ast.request, error) result
+
 val at_cursor :
   source:string ->
   cursor_line:int ->

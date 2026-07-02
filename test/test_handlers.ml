@@ -245,9 +245,9 @@ let test_freight_run_unresolved_var_does_not_curl _ =
   assert_bool "reports the unresolved variable" (shows_line message calls)
 
 let test_freight_run_chaining_survives_across_runs _ =
-  (* First run stores preview.response.body.id in state.env; the second run,
-     with a buffer_dir set (which triggers a fresh .env load), must still see
-     that chaining variable. *)
+  (* First run records the preview response; the second run, with a buffer_dir
+     set (which triggers a fresh .env load), must still resolve
+     {{preview.response.body.id}} against the stored response. *)
   let preview_output =
     "HTTP/1.1 200 OK\r\n\
      Content-Type: application/json\r\n\
@@ -270,9 +270,6 @@ let test_freight_run_chaining_survives_across_runs _ =
   let (), _ =
     Test_runtime_fake.run preview_config @@ fun () -> Handlers.freight_run state
   in
-  assert_equal ~printer:(function Some s -> s | None -> "<none>")
-    (Some "abc123")
-    (Freight.Env.find state.State.env "preview.response.body.id");
   let apply_config =
     { Test_runtime_fake.default_config with
       buffer_lines =
@@ -291,6 +288,51 @@ let test_freight_run_chaining_survives_across_runs _ =
   in
   assert_bool "runs curl (variable resolved)" (has_run_curl calls);
   assert_bool "curl url has the substituted id"
+    (has_call
+       (function
+        | Test_runtime_fake.Run_curl invocation ->
+          List.mem "https://example.com/abc123/apply" invocation.Freight.Executor.args
+        | _ -> false)
+       calls)
+
+let test_freight_run_chaining_nested_field _ =
+  let preview_output =
+    "HTTP/1.1 200 OK\r\n\
+     Content-Type: application/json\r\n\
+     \r\n\
+     {\"data\":{\"id\":\"abc123\"}}\n\
+     200\n\
+     0.010"
+  in
+  let state = State.create () in
+  let preview_config =
+    { Test_runtime_fake.default_config with
+      buffer_lines = [ "# @name preview"; "GET https://example.com/preview" ]
+    ; buffer_dir = Some "/tmp/does-not-exist"
+    ; cursor = { Freight_effect.Cursor.row = 1; col = 0 }
+    ; curl_result = Ok preview_output
+    ; fork_mode = `Run_immediately
+    }
+  in
+  let (), _ =
+    Test_runtime_fake.run preview_config @@ fun () -> Handlers.freight_run state
+  in
+  let apply_config =
+    { Test_runtime_fake.default_config with
+      buffer_lines =
+        [ "# @name apply"
+        ; "POST https://example.com/{{preview.response.body.data.id}}/apply"
+        ]
+    ; buffer_dir = Some "/tmp/does-not-exist"
+    ; cursor = { Freight_effect.Cursor.row = 1; col = 0 }
+    ; curl_result = Ok preview_output
+    ; fork_mode = `Run_immediately
+    }
+  in
+  let (), calls =
+    Test_runtime_fake.run apply_config @@ fun () -> Handlers.freight_run state
+  in
+  assert_bool "curl url has the nested id"
     (has_call
        (function
         | Test_runtime_fake.Run_curl invocation ->
@@ -1030,6 +1072,7 @@ let suite =
     ; "freight_run success" >:: test_freight_run_success
     ; "freight_run unresolved var does not curl" >:: test_freight_run_unresolved_var_does_not_curl
     ; "freight_run chaining survives across runs" >:: test_freight_run_chaining_survives_across_runs
+    ; "freight_run chaining nested field" >:: test_freight_run_chaining_nested_field
     ; "freight_run save refuses clobber" >:: test_freight_run_save_refuses_clobber
     ; "freight_run save overwrite writes" >:: test_freight_run_save_overwrite_writes
     ; "freight_run save derives filename" >:: test_freight_run_save_derives_filename

@@ -31,6 +31,7 @@ type run_all_result =
 type t = {
   mutable active_env : string option;
   mutable env : Freight.Env.t;
+  mutable responses : Freight.Response_store.t;
   mutable last_response : Freight.Ast.response option;
   mutable response_buf : Freight_effect.buffer_id option;
   mutable response_buf_name : string option;
@@ -45,6 +46,7 @@ let history_cap = 50
 let create () = {
   active_env = None;
   env = Freight.Env.empty;
+  responses = Freight.Response_store.empty;
   last_response = None;
   response_buf = None;
   response_buf_name = None;

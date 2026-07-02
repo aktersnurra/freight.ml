@@ -47,9 +47,18 @@ let resolve_env state buf =
     Freight.Env.overlay ~base ~over:state.State.env
   | None -> state.State.env
 
-let resolve_request state source cursor_line buf =
+(* The active resolver: response-chaining vars (deep, lazy) take precedence over
+   .env / accumulated env values. *)
+let build_resolver state buf =
   let env = resolve_env state buf in
-  Freight.Resolve.at_cursor ~source ~cursor_line ~env
+  Freight.Resolver.make
+    [ Freight.Response_store.source state.State.responses
+    ; Freight.Env.source env
+    ]
+
+let resolve_request state source cursor_line buf =
+  let resolver = build_resolver state buf in
+  Freight.Resolve.at_cursor_r ~source ~cursor_line ~resolver
 
 let set_buf_keymaps buf =
   Freight_effect.set_keymap buf ~key:"q" ~command:":close<CR>";
@@ -138,8 +147,8 @@ let freight_help _state =
 
 let record_response state request response verbose_raw response_buf response_buf_name =
   let req_name = Option.value request.Freight.Ast.name ~default:"" in
-  state.State.env <-
-    Freight.Chaining.inject ~name:req_name response state.State.env;
+  state.State.responses <-
+    Freight.Response_store.record ~name:req_name response state.State.responses;
   state.State.last_response <- Some response;
   state.State.response_buf <- Some response_buf;
   state.State.response_buf_name <- Some response_buf_name;
@@ -395,14 +404,17 @@ let freight_run_all state =
         (fun index (source_line, raw_request) ->
           let line_number = index + 1 in
           let source_buffer = buf in
-          (* Resolve against the current env, which accrues the response
-             variables injected by earlier requests in this run. *)
-          let env =
-            Freight.Env.overlay ~base:base_env ~over:state.State.env
+          (* Resolve against the response store (which accrues earlier responses
+             this run) layered over the loaded env. *)
+          let resolver =
+            Freight.Resolver.make
+              [ Freight.Response_store.source state.State.responses
+              ; Freight.Env.source base_env
+              ]
           in
           let request =
             raw_request
-            |> Freight.Resolve.substitute_request env
+            |> Freight.Resolve.substitute_request_r resolver
             |> Freight.Ast.apply_host_header
           in
           let unresolved =

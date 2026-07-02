@@ -36,6 +36,19 @@ function M.start()
   end
 end
 
+function M.stop()
+  if job_id > 0 then
+    vim.fn.jobstop(job_id)
+    job_id = 0
+    ready = false
+  end
+end
+
+function M.restart()
+  M.stop()
+  M.start()
+end
+
 function M.ensure_started()
   if job_id <= 0 then
     M.start()

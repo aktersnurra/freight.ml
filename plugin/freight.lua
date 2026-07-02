@@ -13,6 +13,11 @@ vim.api.nvim_create_user_command("FreightStart", function()
   freight.start()
 end, { desc = "Start the freight RPC process" })
 
+vim.api.nvim_create_user_command("FreightRestart", function()
+  freight.restart()
+  vim.notify("freight: restarted")
+end, { desc = "Restart the freight RPC process (reload a rebuilt binary)" })
+
 vim.api.nvim_create_user_command("FreightOpen", function()
   call_rpc("FreightOpen")
 end, { desc = "Open a Freight request scratch buffer" })

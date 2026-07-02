@@ -59,6 +59,10 @@ function M.channel()
   return job_id
 end
 
+function M.executable()
+  return resolve_executable()
+end
+
 function M.call_rpc(method, args)
   M.ensure_started()
   local channel = M.channel()

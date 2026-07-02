@@ -48,6 +48,7 @@ let dummy_request : Ast.request =
     headers = [];
     body = Ast.Body_none;
     save_to = None;
+    assertions = [];
   }
 
 (* ── A: Ast.method_ roundtrip ────────────────────────────────────────────── *)

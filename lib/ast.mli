@@ -32,6 +32,15 @@ type save = {
   overwrite : bool;  (** [>>!] overwrites; [>>] refuses to clobber. *)
 }
 
+type header_op = Op_equals | Op_contains
+
+type body_op = Op_exists | Op_eq | Op_neq | Op_body_contains
+
+type assertion =
+  | Expect_status of int
+  | Expect_header of { header_name : string; header_op : header_op; header_value : string }
+  | Expect_body of { body_path : string; body_op : body_op; body_value : string option }
+
 type request = {
   name : string option;
   method_ : method_;
@@ -39,6 +48,7 @@ type request = {
   headers : (string * string) list;
   body : body;
   save_to : save option;
+  assertions : assertion list;
 }
 
 type response = {
@@ -70,6 +80,7 @@ type validation_error =
 val make_request :
   ?name:string ->
   ?save_to:save ->
+  ?assertions:assertion list ->
   method_:method_ ->
   url:string ->
   headers:(string * string) list ->

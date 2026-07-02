@@ -232,7 +232,7 @@ let parse_block ~start_line block =
                       (headers, Ast.Body_multipart (parse_multipart ~boundary body_lines))
                   | None -> (headers, parse_body body_lines)
                 in
-                Ok { Ast.name; method_; url; headers; body; save_to }))
+                Ok { Ast.name; method_; url; headers; body; save_to; assertions = [] }))
   in
   skip_leading_metadata start_line None block
 

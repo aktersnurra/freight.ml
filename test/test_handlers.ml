@@ -554,6 +554,7 @@ let test_freight_run_all_http_failure_opens_response_detail _ =
     ; headers = []
     ; body = Freight.Ast.Body_none
     ; save_to = None
+    ; assertions = []
     }
   in
   let response =
@@ -601,6 +602,7 @@ let test_freight_view_run_all_success _ =
     ; headers = []
     ; body = Freight.Ast.Body_none
     ; save_to = None
+    ; assertions = []
     }
   in
   let response =
@@ -650,6 +652,7 @@ let test_freight_view_run_all_verbose_unavailable _ =
     ; headers = []
     ; body = Freight.Ast.Body_none
     ; save_to = None
+    ; assertions = []
     }
   in
   let response =
@@ -691,6 +694,7 @@ let test_freight_view_run_all_failure _ =
     ; headers = []
     ; body = Freight.Ast.Body_none
     ; save_to = None
+    ; assertions = []
     }
   in
   let state = State.create () in
@@ -753,6 +757,7 @@ let test_freight_jump_run_all _ =
     ; headers = []
     ; body = Freight.Ast.Body_none
     ; save_to = None
+    ; assertions = []
     }
   in
   let response =
@@ -797,6 +802,7 @@ let test_freight_jump_run_all_uses_win_findbuf _ =
     ; headers = []
     ; body = Freight.Ast.Body_none
     ; save_to = None
+    ; assertions = []
     }
   in
   let response =
@@ -839,6 +845,7 @@ let test_freight_jump_run_all_skips_invalid_source_window _ =
     ; headers = []
     ; body = Freight.Ast.Body_none
     ; save_to = None
+    ; assertions = []
     }
   in
   let response =
@@ -927,6 +934,7 @@ let test_freight_view_body _ =
         ; headers = []
         ; body = Freight.Ast.Body_none
         ; save_to = None
+        ; assertions = []
         }
     };
   state.State.response_buf <- Some 42;
@@ -953,6 +961,7 @@ let test_freight_view_headers _ =
         ; headers = []
         ; body = Freight.Ast.Body_none
         ; save_to = None
+        ; assertions = []
         }
     };
   state.State.response_buf <- Some 42;
@@ -979,6 +988,7 @@ let test_freight_view_all _ =
         ; headers = []
         ; body = Freight.Ast.Body_none
         ; save_to = None
+        ; assertions = []
         }
     };
   state.State.response_buf <- Some 42;
@@ -995,7 +1005,7 @@ let test_freight_view_all _ =
 let test_push_history _ =
   let state = State.create () in
   let req = { Freight.Ast.name = Some "r1"; method_ = Get;
-               url = "https://example.com"; headers = []; body = Body_none; save_to = None } in
+               url = "https://example.com"; headers = []; body = Body_none; save_to = None; assertions = [] } in
   let resp = { Freight.Ast.status = 200; status_text = "OK";
                headers = []; body = ""; duration_ms = 1; request = req } in
   State.push_history state req resp "verbose";
@@ -1008,7 +1018,7 @@ let test_push_history _ =
 let test_push_history_cap _ =
   let state = State.create () in
   let req = { Freight.Ast.name = None; method_ = Get;
-               url = "https://example.com"; headers = []; body = Body_none; save_to = None } in
+               url = "https://example.com"; headers = []; body = Body_none; save_to = None; assertions = [] } in
   let resp = { Freight.Ast.status = 200; status_text = "OK";
                headers = []; body = ""; duration_ms = 1; request = req } in
   for i = 1 to 55 do
@@ -1048,7 +1058,7 @@ let test_freight_history_empty _ =
 let test_freight_view_history _ =
   let state = State.create () in
   let req = { Freight.Ast.name = Some "r1"; method_ = Freight.Ast.Get;
-               url = "https://example.com"; headers = []; body = Freight.Ast.Body_none; save_to = None } in
+               url = "https://example.com"; headers = []; body = Freight.Ast.Body_none; save_to = None; assertions = [] } in
   let resp = { Freight.Ast.status = 200; status_text = "OK";
                headers = []; body = "hello"; duration_ms = 1; request = req } in
   State.push_history state req resp "verbose";

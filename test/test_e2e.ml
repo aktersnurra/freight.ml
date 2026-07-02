@@ -33,6 +33,7 @@ let base_request ~url =
   ; headers = []
   ; body = Freight.Ast.Body_none
   ; save_to = None
+  ; assertions = []
   }
 
 (* Run [request] against [server], returning the parsed response. *)
@@ -87,6 +88,7 @@ let test_e2e_deep_chaining_and_float _ =
     ; headers = []
     ; body = Freight.Ast.Body_none
     ; save_to = None
+    ; assertions = []
     }
   in
   let resolved = Freight.Resolve.substitute_request_r resolver next in
@@ -105,6 +107,7 @@ let test_e2e_records_request_body_and_headers _ =
     ; headers = [ ("X-Api-Key", "secret123"); ("Content-Type", "application/json") ]
     ; body = Freight.Ast.Body_inline {|{"name":"gadget"}|}
     ; save_to = None
+    ; assertions = []
     }
   in
   ignore (run_against server request);
@@ -135,6 +138,7 @@ let test_e2e_multipart_upload _ =
             }
           ]
     ; save_to = None
+    ; assertions = []
     }
   in
   ignore (run_against server request);
@@ -176,6 +180,7 @@ let test_e2e_save_binary_body_byte_identical _ =
     ; headers = []
     ; body = Freight.Ast.Body_none
     ; save_to = Some { Freight.Ast.save_path = Some path; overwrite = true }
+    ; assertions = []
     }
   in
   (* Executor emits -o path, so curl writes the body straight to disk. *)

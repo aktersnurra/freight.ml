@@ -32,6 +32,15 @@ type save = {
   overwrite : bool;  (** [>>!] overwrites; [>>] refuses to clobber. *)
 }
 
+type header_op = Op_equals | Op_contains
+
+type body_op = Op_exists | Op_eq | Op_neq | Op_body_contains
+
+type assertion =
+  | Expect_status of int
+  | Expect_header of { header_name : string; header_op : header_op; header_value : string }
+  | Expect_body of { body_path : string; body_op : body_op; body_value : string option }
+
 type request = {
   name : string option;
   method_ : method_;
@@ -39,6 +48,7 @@ type request = {
   headers : (string * string) list;
   body : body;
   save_to : save option;
+  assertions : assertion list;
 }
 
 type response = {
@@ -75,10 +85,10 @@ let validate_request_fields ~url ~headers =
   else if has_empty_header_name headers then Error Empty_header_name
   else Ok ()
 
-let make_request ?name ?save_to ~method_ ~url ~headers ~body () =
+let make_request ?name ?save_to ?(assertions = []) ~method_ ~url ~headers ~body () =
   match validate_request_fields ~url ~headers with
   | Error error -> Error error
-  | Ok () -> Ok { name; method_; url; headers; body; save_to }
+  | Ok () -> Ok { name; method_; url; headers; body; save_to; assertions }
 
 let make_response ~status ~status_text ~headers ~body ~duration_ms ~request () =
   if status < 100 || status > 599 then Error Invalid_status

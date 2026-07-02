@@ -280,6 +280,23 @@ let report_saved ~dir ~name loading_buf save response render_lines =
           Freight_effect.update_scratch loading_buf ~name ~filetype:"freight"
             ~lines:(render_lines @ [ ""; "Could not save: " ^ message ])))
 
+(* Render an "Assertions" section: a ✓/✗ line per declared assertion, with the
+   failure detail on the ✗ lines. Empty when the request declares none. *)
+let assertion_lines request response =
+  match request.Freight.Ast.assertions with
+  | [] -> []
+  | assertions ->
+    let failures = Freight.Assertion.check response assertions in
+    let failed a =
+      List.find_opt (fun (f : Freight.Assertion.failure) -> f.assertion == a) failures
+    in
+    let line a =
+      match failed a with
+      | None -> "✓ " ^ Freight.Assertion.describe a
+      | Some f -> Printf.sprintf "✗ %s — %s" (Freight.Assertion.describe a) f.detail
+    in
+    "" :: "Assertions" :: List.map line assertions
+
 let freight_run state =
   let buf, source, cursor_line = current_source () in
   let dir = Freight_effect.buffer_dir buf in
@@ -351,7 +368,9 @@ let freight_run state =
                   (Freight.Response.detect_content_type response)
               in
               record_response state request response verbose_raw loading_buf name;
-              let render_lines = Freight.Response.render response in
+              let render_lines =
+                Freight.Response.render response @ assertion_lines request response
+              in
               Freight_effect.update_scratch loading_buf
                 ~name ~filetype
                 ~lines:render_lines;
@@ -457,10 +476,22 @@ let freight_run_all state =
                    :: !results
                else begin
                  record_response state request response "" loading_buf name;
-                 results :=
-                   State.Run_all_success
-                     { line_number; source_buffer; source_window; source_line; request; response; verbose = "" }
-                   :: !results
+                 match Freight.Assertion.check response request.Freight.Ast.assertions with
+                 | failure :: _ ->
+                   results :=
+                     State.Run_all_failure
+                       { line_number; source_buffer; source_window; source_line
+                       ; request
+                       ; message =
+                           "assertion failed: "
+                           ^ Freight.Assertion.describe failure.Freight.Assertion.assertion
+                       ; response = Some response }
+                     :: !results
+                 | [] ->
+                   results :=
+                     State.Run_all_success
+                       { line_number; source_buffer; source_window; source_line; request; response; verbose = "" }
+                     :: !results
                end)
           end;
           state.State.run_all_results <- List.rev !results;

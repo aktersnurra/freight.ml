@@ -183,6 +183,47 @@ let test_freight_run_curl_error _ =
   assert_bool "curl was run" (has_run_curl calls);
   assert_bool "scratch updated with error" (has_update_scratch calls)
 
+let test_freight_run_assertion_pass_and_fail _ =
+  let curl_output =
+    "HTTP/1.1 200 OK\r\n\
+     Content-Type: application/json\r\n\
+     \r\n\
+     {\"id\":\"7\"}\n\
+     200\n\
+     0.010"
+  in
+  let config =
+    { Test_runtime_fake.default_config with
+      buffer_lines =
+        [ "# @name r"
+        ; "# @expect status 200"
+        ; "# @expect body missing exists"
+        ; "GET https://example.com"
+        ]
+    ; cursor = { Freight_effect.Cursor.row = 3; col = 0 }
+    ; curl_result = Ok curl_output
+    ; fork_mode = `Run_immediately
+    }
+  in
+  let (), calls =
+    Test_runtime_fake.run config @@ fun () -> Handlers.freight_run (State.create ())
+  in
+  let contains ~needle hay =
+    let nl = String.length needle and hl = String.length hay in
+    let rec go i = i + nl <= hl && (String.sub hay i nl = needle || go (i + 1)) in
+    nl = 0 || go 0
+  in
+  let any_line pred =
+    calls
+    |> List.exists (function
+      | Test_runtime_fake.Update_scratch (_, v) -> List.exists pred v.lines
+      | _ -> false)
+  in
+  assert_bool "has Assertions section" (any_line (fun l -> l = "Assertions"));
+  assert_bool "passing assertion shown" (any_line (fun l -> l = "✓ status 200"));
+  assert_bool "failing assertion shown"
+    (any_line (fun l -> contains ~needle:"✗ body missing exists" l))
+
 let test_freight_run_success _ =
   let curl_output =
     "HTTP/1.1 200 OK\r\n\
@@ -545,6 +586,52 @@ let test_freight_run_all_groups_http_errors_as_failed _ =
   assert_bool "summary counts HTTP error as failed"
     (has_update_scratch_line "Run all complete: 0 succeeded, 1 failed" calls);
   assert_bool "hides empty successful heading" (has_no_update_scratch_line "Successful" calls)
+
+let test_freight_run_all_assertion_failure_is_failed _ =
+  (* 200 response, but a declared assertion fails -> the entry is a failure. *)
+  let raw_response =
+    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"id\":\"7\"}\n200\n0.010"
+  in
+  let state = State.create () in
+  let config =
+    { Test_runtime_fake.default_config with
+      buffer_lines =
+        [ "# @expect body nope exists"; "GET https://example.com/x" ]
+    ; curl_result = Ok raw_response
+    ; fork_mode = `Run_immediately
+    }
+  in
+  let (), calls =
+    Test_runtime_fake.run config @@ fun () -> Handlers.freight_run_all state
+  in
+  assert_bool "assertion failure stored as failure"
+    (match state.State.run_all_results with
+     | [ State.Run_all_failure f ] ->
+       f.message = "assertion failed: body nope exists"
+     | _ -> false);
+  assert_bool "summary counts it failed"
+    (has_update_scratch_line "Run all complete: 0 succeeded, 1 failed" calls)
+
+let test_freight_run_all_assertion_pass_is_success _ =
+  let raw_response =
+    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"id\":\"7\"}\n200\n0.010"
+  in
+  let state = State.create () in
+  let config =
+    { Test_runtime_fake.default_config with
+      buffer_lines =
+        [ "# @expect status 200"; "# @expect body id exists"; "GET https://example.com/x" ]
+    ; curl_result = Ok raw_response
+    ; fork_mode = `Run_immediately
+    }
+  in
+  let (), _ =
+    Test_runtime_fake.run config @@ fun () -> Handlers.freight_run_all state
+  in
+  assert_bool "passing assertions -> success"
+    (match state.State.run_all_results with
+     | [ State.Run_all_success _ ] -> true
+     | _ -> false)
 
 let test_freight_run_all_http_failure_opens_response_detail _ =
   let request =
@@ -1080,6 +1167,9 @@ let suite =
     ; "freight_run no request" >:: test_freight_run_no_request
     ; "freight_run curl error" >:: test_freight_run_curl_error
     ; "freight_run success" >:: test_freight_run_success
+    ; "freight_run assertion pass and fail" >:: test_freight_run_assertion_pass_and_fail
+    ; "freight_run_all assertion failure is failed" >:: test_freight_run_all_assertion_failure_is_failed
+    ; "freight_run_all assertion pass is success" >:: test_freight_run_all_assertion_pass_is_success
     ; "freight_run unresolved var does not curl" >:: test_freight_run_unresolved_var_does_not_curl
     ; "freight_run chaining survives across runs" >:: test_freight_run_chaining_survives_across_runs
     ; "freight_run chaining nested field" >:: test_freight_run_chaining_nested_field

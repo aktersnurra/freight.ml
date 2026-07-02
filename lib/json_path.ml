@@ -25,7 +25,8 @@ let scalar_to_string = function
   | `String s -> Some s
   | `Int i -> Some (string_of_int i)
   | `Intlit s -> Some s
-  | `Float f -> Some (string_of_float f)
+  (* [string_of_float 9.0] is "9.", not valid JSON; Yojson renders "9.0". *)
+  | `Float _ as json -> Some (Yojson.Safe.to_string json)
   | `Bool b -> Some (string_of_bool b)
   | `Null -> Some "null"
   | `Assoc _ | `List _ | `Tuple _ | `Variant _ -> None

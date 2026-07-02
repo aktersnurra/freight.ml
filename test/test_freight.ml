@@ -1030,6 +1030,22 @@ let test_json_path_lookup_array _ =
   assert_equal (Some "8")
     (Freight.Json_path.lookup json (Freight.Json_path.parse "items[1].id"))
 
+let test_json_path_lookup_whole_float _ =
+  (* A JSON float like 9.0 must render as valid JSON "9.0", not OCaml's "9." *)
+  let json = Yojson.Safe.from_string {|{"price":9.0}|} in
+  assert_equal (Some "9.0")
+    (Freight.Json_path.lookup json (Freight.Json_path.parse "price"))
+
+let test_json_path_lookup_fractional_float _ =
+  let json = Yojson.Safe.from_string {|{"price":9.9}|} in
+  assert_equal (Some "9.9")
+    (Freight.Json_path.lookup json (Freight.Json_path.parse "price"))
+
+let test_json_path_lookup_large_float _ =
+  let json = Yojson.Safe.from_string {|{"total":1234567.0}|} in
+  assert_equal (Some "1234567.0")
+    (Freight.Json_path.lookup json (Freight.Json_path.parse "total"))
+
 let test_json_path_lookup_missing _ =
   let json = Yojson.Safe.from_string {|{"data":{"id":"abc"}}|} in
   assert_equal None
@@ -1263,6 +1279,9 @@ let suite =
          "json_path_parse_index_dotted" >:: test_json_path_parse_index_dotted;
          "json_path_lookup_nested" >:: test_json_path_lookup_nested;
          "json_path_lookup_array" >:: test_json_path_lookup_array;
+         "json_path_lookup_whole_float" >:: test_json_path_lookup_whole_float;
+         "json_path_lookup_fractional_float" >:: test_json_path_lookup_fractional_float;
+         "json_path_lookup_large_float" >:: test_json_path_lookup_large_float;
          "json_path_lookup_missing" >:: test_json_path_lookup_missing;
          "json_path_lookup_non_scalar_leaf" >:: test_json_path_lookup_non_scalar_leaf;
          "resolver_first_source_wins" >:: test_resolver_first_source_wins;

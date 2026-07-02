@@ -10,6 +10,13 @@ val unresolved_request : Env.t -> Ast.request -> string list
     [{{var}}] references in the request's url, header values, and body that are
     not present in [env]. Empty when every reference resolves. *)
 
+val substitute_request_r : Resolver.t -> Ast.request -> Ast.request
+(** Like {!substitute_request} but driven by an arbitrary resolver (env +
+    response store + dynamic sources). *)
+
+val unresolved_request_r : Resolver.t -> Ast.request -> string list
+(** Like {!unresolved_request} but driven by an arbitrary resolver. *)
+
 val at_cursor :
   source:string ->
   cursor_line:int ->

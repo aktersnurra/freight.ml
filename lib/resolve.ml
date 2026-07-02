@@ -3,8 +3,8 @@ type error =
   | `No_request
   ]
 
-let substitute_request env (request : Ast.request) =
-  let sub = Env.substitute env in
+let substitute_request_r resolver (request : Ast.request) =
+  let sub = Resolver.resolve resolver in
   let sub_part (part : Ast.multipart_part) =
     let content =
       match part.content with
@@ -37,6 +37,9 @@ let substitute_request env (request : Ast.request) =
   ; save_to
   }
 
+let substitute_request env request =
+  substitute_request_r (Resolver.make [ Env.source env ]) request
+
 let part_strings (part : Ast.multipart_part) =
   let content =
     match part.content with
@@ -55,10 +58,13 @@ let request_strings (request : Ast.request) =
   in
   (request.url :: List.map snd request.headers) @ body
 
-let unresolved_request env request =
+let unresolved_request_r resolver request =
   request_strings request
-  |> List.concat_map (Env.unresolved env)
+  |> List.concat_map (Resolver.unresolved resolver)
   |> List.sort_uniq String.compare
+
+let unresolved_request env request =
+  unresolved_request_r (Resolver.make [ Env.source env ]) request
 
 let at_cursor ~source ~cursor_line ~env =
   match Parser.request_at_cursor source cursor_line with

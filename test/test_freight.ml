@@ -1156,6 +1156,41 @@ let test_response_store_malformed_json _ =
   let src = Freight.Response_store.source store in
   assert_equal None (src "login.response.body.token")
 
+let test_substitute_request_with_resolver _ =
+  let store = Freight.Response_store.record ~name:"login"
+      (store_response ~body:{|{"data":{"id":"xyz"}}|} ~headers:[])
+      Freight.Response_store.empty in
+  let env = Freight.Env.of_list [ ("host", "example.com") ] in
+  let resolver =
+    Freight.Resolver.make
+      [ Freight.Response_store.source store; Freight.Env.source env ]
+  in
+  let request =
+    { Freight.Ast.name = None
+    ; method_ = Freight.Ast.Post
+    ; url = "https://{{host}}/items/{{login.response.body.data.id}}"
+    ; headers = []
+    ; body = Freight.Ast.Body_none
+    ; save_to = None
+    }
+  in
+  let resolved = Freight.Resolve.substitute_request_r resolver request in
+  assert_equal "https://example.com/items/xyz" resolved.Freight.Ast.url
+
+let test_unresolved_request_with_resolver _ =
+  let resolver = Freight.Resolver.make [] in
+  let request =
+    { Freight.Ast.name = None
+    ; method_ = Freight.Ast.Get
+    ; url = "https://x/{{a}}"
+    ; headers = [ ("H", "{{b}}") ]
+    ; body = Freight.Ast.Body_none
+    ; save_to = None
+    }
+  in
+  assert_equal [ "a"; "b" ]
+    (Freight.Resolve.unresolved_request_r resolver request)
+
 let suite =
   "freight"
   >::: [
@@ -1271,6 +1306,8 @@ let suite =
          "response_store_missing_path" >:: test_response_store_missing_path;
          "response_store_unknown_name" >:: test_response_store_unknown_name;
          "response_store_malformed_json" >:: test_response_store_malformed_json;
+         "substitute_request_with_resolver" >:: test_substitute_request_with_resolver;
+         "unresolved_request_with_resolver" >:: test_unresolved_request_with_resolver;
        ]
 
 let () = run_test_tt_main suite

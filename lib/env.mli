@@ -5,6 +5,9 @@ val of_list : (string * string) list -> t
 val find : t -> string -> string option
 val add : t -> key:string -> data:string -> t
 
+val source : t -> Resolver.source
+(** Expose the env as a resolver source: resolves a key to its value. *)
+
 val overlay : base:t -> over:t -> t
 (** [overlay ~base ~over] merges [over] on top of [base]: every key in [over]
     shadows the same key in [base]. Used to keep accumulated response-chaining

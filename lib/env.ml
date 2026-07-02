@@ -62,23 +62,10 @@ let load ~dir ~active_env =
            env names)
        empty
 
-let variable = Re.Perl.compile_pat "\\{\\{[ \\t]*([A-Za-z_][A-Za-z0-9_.-]*)[ \\t]*\\}\\}"
+let source env key = find env key
 
-let substitute env source =
-  Re.replace variable source ~f:(fun group ->
-      let key = Re.Group.get group 1 in
-      match find env key with Some data -> data | None -> Re.Group.get group 0)
+let substitute env s = Resolver.resolve (Resolver.make [ source env ]) s
 
 let to_list env = String_map.bindings env
 
-let unresolved env source =
-  let seen = Hashtbl.create 8 in
-  Re.all variable source
-  |> List.filter_map (fun group ->
-      let key = Re.Group.get group 1 in
-      match find env key with
-      | Some _ -> None
-      | None ->
-        if Hashtbl.mem seen key then None
-        else begin Hashtbl.add seen key (); Some key end)
-  |> List.sort String.compare
+let unresolved env s = Resolver.unresolved (Resolver.make [ source env ]) s

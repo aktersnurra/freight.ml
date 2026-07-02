@@ -1094,9 +1094,16 @@ let test_resolver_unresolved _ =
   assert_equal [ "y"; "z" ]
     (Freight.Resolver.unresolved r "{{x}} {{z}} {{y}} {{z}}")
 
+let test_env_source_resolves_key _ =
+  let env = Freight.Env.of_list [ ("host", "example.com") ] in
+  let src = Freight.Env.source env in
+  assert_equal (Some "example.com") (src "host");
+  assert_equal None (src "missing")
+
 let suite =
   "freight"
   >::: [
+         "env_source_resolves_key" >:: test_env_source_resolves_key;
          "method_to_string" >:: test_method_to_string;
          "method_of_string" >:: test_method_of_string;
          "make_request rejects empty url" >:: test_make_request_rejects_empty_url;

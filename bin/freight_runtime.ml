@@ -155,5 +155,14 @@ let rec run : type a. proc_mgr:_ -> sw:_ -> rpc:_ -> (unit -> a) -> a =
                 with Sys_error message -> Error message
               in
               Effect.Deep.continue k result)
+          | Freight_effect.Get_env name ->
+            Some (fun (k : (a, _) Effect.Deep.continuation) ->
+              Effect.Deep.continue k (Sys.getenv_opt name))
+          | Freight_effect.Now () ->
+            Some (fun (k : (a, _) Effect.Deep.continuation) ->
+              Effect.Deep.continue k (Unix.gettimeofday ()))
+          | Freight_effect.Random_int bound ->
+            Some (fun (k : (a, _) Effect.Deep.continuation) ->
+              Effect.Deep.continue k (Random.int (max 1 bound)))
           | _ -> None)
     }

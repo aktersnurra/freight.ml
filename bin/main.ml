@@ -134,6 +134,7 @@ let loop ~proc_mgr ~sw ~rpc state =
   done
 
 let () =
+  Random.self_init ();
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
     let stdin = Eio.Stdenv.stdin env in

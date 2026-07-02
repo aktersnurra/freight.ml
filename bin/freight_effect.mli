@@ -43,6 +43,9 @@ type _ Effect.t +=
   | File_exists : string -> bool Effect.t
   | File_size : string -> int option Effect.t
   | Write_file : { path : string; data : string } -> (int, string) result Effect.t
+  | Get_env : string -> string option Effect.t
+  | Now : unit -> float Effect.t
+  | Random_int : int -> int Effect.t
 
 val current_buffer : unit -> buffer_id
 val buffer_lines : buffer_id -> string list
@@ -61,6 +64,10 @@ val nvim_call : string -> Msgpck.t list -> Msgpck.t
 val file_exists : string -> bool
 val file_size : string -> int option
 (** Byte length of the file at the path, or [None] if it does not exist. *)
+
+val get_env : string -> string option
+val now : unit -> float
+val random_int : int -> int
 
 val write_file : path:string -> data:string -> (int, string) result
 (** Writes [data] to [path], returning the number of bytes written. *)

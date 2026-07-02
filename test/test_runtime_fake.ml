@@ -32,6 +32,9 @@ type config =
   ; existing_files : string list
   ; file_sizes : (string * int) list
   ; write_file_result : (int, string) result
+  ; env_vars : (string * string) list
+  ; now : float
+  ; random_ints : int list
   }
 
 let default_config =
@@ -49,12 +52,16 @@ let default_config =
   ; existing_files = []
   ; file_sizes = []
   ; write_file_result = Ok 0
+  ; env_vars = []
+  ; now = 1_700_000_000.0
+  ; random_ints = []
   }
 
 let rec run config f =
   let calls = ref [] in
   let log c = calls := c :: !calls in
   let next_buf = ref 100 in
+  let random_queue = ref config.random_ints in
   let result =
     Effect.Deep.try_with f ()
       { effc =
@@ -136,6 +143,20 @@ let rec run config f =
                   | Error _ as error -> error
                 in
                 Effect.Deep.continue k result)
+            | Freight_effect.Get_env name ->
+              Some (fun (k : (a, _) Effect.Deep.continuation) ->
+                Effect.Deep.continue k (List.assoc_opt name config.env_vars))
+            | Freight_effect.Now () ->
+              Some (fun (k : (a, _) Effect.Deep.continuation) ->
+                Effect.Deep.continue k config.now)
+            | Freight_effect.Random_int _bound ->
+              Some (fun (k : (a, _) Effect.Deep.continuation) ->
+                let value =
+                  match !random_queue with
+                  | x :: rest -> random_queue := rest; x
+                  | [] -> 0
+                in
+                Effect.Deep.continue k value)
             | Freight_effect.Nvim_call (method_, params) ->
               Some (fun (k : (a, _) Effect.Deep.continuation) ->
                 log (Nvim_call (method_, params));

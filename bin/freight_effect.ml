@@ -45,6 +45,9 @@ type _ Effect.t +=
   | File_exists : string -> bool Effect.t
   | File_size : string -> int option Effect.t
   | Write_file : { path : string; data : string } -> (int, string) result Effect.t
+  | Get_env : string -> string option Effect.t
+  | Now : unit -> float Effect.t
+  | Random_int : int -> int Effect.t
 
 let current_buffer () = Effect.perform Current_buffer
 let buffer_lines buf = Effect.perform (Buffer_lines buf)
@@ -72,3 +75,6 @@ let nvim_call method_ params = Effect.perform (Nvim_call (method_, params))
 let file_exists path = Effect.perform (File_exists path)
 let file_size path = Effect.perform (File_size path)
 let write_file ~path ~data = Effect.perform (Write_file { path; data })
+let get_env name = Effect.perform (Get_env name)
+let now () = Effect.perform (Now ())
+let random_int bound = Effect.perform (Random_int bound)

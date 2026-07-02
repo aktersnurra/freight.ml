@@ -12,3 +12,8 @@
  (name test_handlers)
  (modules test_handlers test_runtime_fake)
  (libraries freight freight_plugin ounit2 msgpck))
+
+(test
+ (name test_e2e)
+ (modules test_e2e)
+ (libraries freight ounit2 unix threads.posix))

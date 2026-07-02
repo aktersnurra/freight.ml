@@ -344,6 +344,56 @@ let test_parse_expect_malformed _ =
   let e = parse_error "# @expect bogus thing\nGET https://x/\n" in
   assert_equal 1 e.Freight.Ast.line
 
+let assertion_response ~status ~headers ~body =
+  { Freight.Ast.status; status_text = "OK"; headers; body; duration_ms = 1
+  ; request =
+      { Freight.Ast.name = None; method_ = Freight.Ast.Get; url = "https://x/"
+      ; headers = []; body = Freight.Ast.Body_none; save_to = None; assertions = [] }
+  }
+
+let check_ok resp assertions =
+  assert_equal ~printer:string_of_int 0
+    (List.length (Freight.Assertion.check resp assertions))
+
+let check_fails resp assertions =
+  assert_bool "expected at least one failure"
+    (Freight.Assertion.check resp assertions <> [])
+
+let test_assert_status _ =
+  let r = assertion_response ~status:201 ~headers:[] ~body:"" in
+  check_ok r [ Freight.Ast.Expect_status 201 ];
+  check_fails r [ Freight.Ast.Expect_status 200 ]
+
+let test_assert_header _ =
+  let r = assertion_response ~status:200
+      ~headers:[ ("Content-Type", "application/json; charset=utf-8") ] ~body:"" in
+  check_ok r
+    [ Freight.Ast.Expect_header { header_name = "content-type"; header_op = Freight.Ast.Op_contains; header_value = "json" } ];
+  check_ok r
+    [ Freight.Ast.Expect_header { header_name = "Content-Type"; header_op = Freight.Ast.Op_equals; header_value = "application/json; charset=utf-8" } ];
+  check_fails r
+    [ Freight.Ast.Expect_header { header_name = "X-Missing"; header_op = Freight.Ast.Op_contains; header_value = "x" } ]
+
+let test_assert_body _ =
+  let r = assertion_response ~status:200 ~headers:[]
+      ~body:{|{"data":{"id":"7","status":"active"}}|} in
+  check_ok r [ Freight.Ast.Expect_body { body_path = "data.id"; body_op = Freight.Ast.Op_exists; body_value = None } ];
+  check_ok r [ Freight.Ast.Expect_body { body_path = "data.status"; body_op = Freight.Ast.Op_eq; body_value = Some "active" } ];
+  check_fails r [ Freight.Ast.Expect_body { body_path = "data.status"; body_op = Freight.Ast.Op_eq; body_value = Some "inactive" } ];
+  check_ok r [ Freight.Ast.Expect_body { body_path = "data.status"; body_op = Freight.Ast.Op_neq; body_value = Some "inactive" } ];
+  check_fails r [ Freight.Ast.Expect_body { body_path = "data.missing"; body_op = Freight.Ast.Op_exists; body_value = None } ]
+
+let test_assert_body_malformed_json _ =
+  let r = assertion_response ~status:200 ~headers:[] ~body:"not json" in
+  check_fails r [ Freight.Ast.Expect_body { body_path = "id"; body_op = Freight.Ast.Op_exists; body_value = None } ]
+
+let test_assert_describe _ =
+  assert_equal ~printer:Fun.id "status 201"
+    (Freight.Assertion.describe (Freight.Ast.Expect_status 201));
+  assert_equal ~printer:Fun.id "body data.id exists"
+    (Freight.Assertion.describe
+       (Freight.Ast.Expect_body { body_path = "data.id"; body_op = Freight.Ast.Op_exists; body_value = None }))
+
 (* Two requests separated by ###, with a leading comment block and a trailing
    comment-only block. Line indices (0-based) for request_at_cursor:
      0: # first
@@ -1391,6 +1441,11 @@ let suite =
          "parse_expect_body_eq" >:: test_parse_expect_body_eq;
          "parse_expect_multiple_in_order" >:: test_parse_expect_multiple_in_order;
          "parse_expect_malformed" >:: test_parse_expect_malformed;
+         "assert_status" >:: test_assert_status;
+         "assert_header" >:: test_assert_header;
+         "assert_body" >:: test_assert_body;
+         "assert_body_malformed_json" >:: test_assert_body_malformed_json;
+         "assert_describe" >:: test_assert_describe;
          "request_at_cursor_on_request_line" >:: test_request_at_cursor_on_request_line;
          "request_at_cursor_on_header_line" >:: test_request_at_cursor_on_header_line;
          "request_at_cursor_second_request" >:: test_request_at_cursor_second_request;

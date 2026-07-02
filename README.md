@@ -200,7 +200,9 @@ PASSWORD=hunter2
 
 ## Response chaining
 
-Named request responses are injected into the environment under `name.response.body.*` and `name.response.headers.*`:
+Named request responses are addressable from later requests via
+`{{name.response.body.<path>}}` and `{{name.response.headers.<header>}}`. Body
+paths support nested objects and arrays:
 
 ```http
 # @name login
@@ -211,9 +213,13 @@ Content-Type: application/json
 
 ###
 
-GET {{BASE_URL}}/profile
+GET {{BASE_URL}}/orders/{{login.response.body.data.items[0].id}}
 Authorization: Bearer {{login.response.body.token}}
 ```
+
+Paths use dotted keys, `[n]` or `.n` array indices, and resolve lazily against
+the stored response. A path that is missing or points at a non-scalar reports as
+an unresolved variable — the request fails fast instead of shelling out to curl.
 
 ## Architecture
 

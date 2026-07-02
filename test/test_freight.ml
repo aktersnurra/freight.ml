@@ -1100,6 +1100,62 @@ let test_env_source_resolves_key _ =
   assert_equal (Some "example.com") (src "host");
   assert_equal None (src "missing")
 
+let store_response ~body ~headers =
+  { Freight.Ast.status = 200
+  ; status_text = "OK"
+  ; headers
+  ; body
+  ; duration_ms = 1
+  ; request =
+      { Freight.Ast.name = None
+      ; method_ = Freight.Ast.Get
+      ; url = "https://example.com"
+      ; headers = []
+      ; body = Freight.Ast.Body_none
+      ; save_to = None
+      }
+  }
+
+let test_response_store_top_level_body _ =
+  let resp = store_response ~body:{|{"token":"abc"}|} ~headers:[] in
+  let store = Freight.Response_store.record ~name:"login" resp Freight.Response_store.empty in
+  let src = Freight.Response_store.source store in
+  assert_equal (Some "abc") (src "login.response.body.token")
+
+let test_response_store_nested_body _ =
+  let resp = store_response ~body:{|{"data":{"id":"xyz"}}|} ~headers:[] in
+  let store = Freight.Response_store.record ~name:"login" resp Freight.Response_store.empty in
+  let src = Freight.Response_store.source store in
+  assert_equal (Some "xyz") (src "login.response.body.data.id")
+
+let test_response_store_array_body _ =
+  let resp = store_response ~body:{|{"items":[{"id":1},{"id":2}]}|} ~headers:[] in
+  let store = Freight.Response_store.record ~name:"list" resp Freight.Response_store.empty in
+  let src = Freight.Response_store.source store in
+  assert_equal (Some "2") (src "list.response.body.items[1].id")
+
+let test_response_store_header _ =
+  let resp = store_response ~body:"" ~headers:[ ("X-Request-Id", "req-1") ] in
+  let store = Freight.Response_store.record ~name:"login" resp Freight.Response_store.empty in
+  let src = Freight.Response_store.source store in
+  assert_equal (Some "req-1") (src "login.response.headers.X-Request-Id")
+
+let test_response_store_missing_path _ =
+  let resp = store_response ~body:{|{"token":"abc"}|} ~headers:[] in
+  let store = Freight.Response_store.record ~name:"login" resp Freight.Response_store.empty in
+  let src = Freight.Response_store.source store in
+  assert_equal None (src "login.response.body.nope")
+
+let test_response_store_unknown_name _ =
+  let src = Freight.Response_store.source Freight.Response_store.empty in
+  assert_equal None (src "login.response.body.token")
+
+let test_response_store_malformed_json _ =
+  let resp = store_response ~body:"not json" ~headers:[] in
+  let store = Freight.Response_store.record ~name:"login" resp Freight.Response_store.empty in
+  let src = Freight.Response_store.source store in
+  assert_equal None (src "login.response.body.token")
+
 let suite =
   "freight"
   >::: [
@@ -1208,6 +1264,13 @@ let suite =
          "resolver_unknown_left_literal" >:: test_resolver_unknown_left_literal;
          "resolver_trims_ref" >:: test_resolver_trims_ref;
          "resolver_unresolved" >:: test_resolver_unresolved;
+         "response_store_top_level_body" >:: test_response_store_top_level_body;
+         "response_store_nested_body" >:: test_response_store_nested_body;
+         "response_store_array_body" >:: test_response_store_array_body;
+         "response_store_header" >:: test_response_store_header;
+         "response_store_missing_path" >:: test_response_store_missing_path;
+         "response_store_unknown_name" >:: test_response_store_unknown_name;
+         "response_store_malformed_json" >:: test_response_store_malformed_json;
        ]
 
 let () = run_test_tt_main suite

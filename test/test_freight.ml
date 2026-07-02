@@ -405,6 +405,85 @@ let test_to_curl_no_save_uses_i _ =
       assert_bool "no -o" (not (List.mem "-o" invocation.args))
   | _ -> assert_failure "expected one request"
 
+(* Golden snapshots: pin the ENTIRE curl arg vector for each request shape.
+   Presence checks (List.mem) miss flag reordering, a lost -o, or a spurious
+   extra arg; these full-vector assertions turn any such drift into a diff. *)
+let curl_args ?name ?(method_ = Freight.Ast.Get) ?(headers = []) ?(save_to = None)
+    ~url body =
+  (Freight.Executor.to_curl
+     { Freight.Ast.name; method_; url; headers; body; save_to })
+    .Freight.Executor.args
+
+let print_args args = "[ " ^ String.concat " ; " (List.map (Printf.sprintf "%S") args) ^ " ]"
+
+let assert_args expected actual =
+  assert_equal ~printer:print_args expected actual
+
+let test_golden_curl_inline_body _ =
+  assert_args
+    [ "-i"; "-s"; "-X"; "POST"; "-H"; "Content-Type: application/json"
+    ; "--data-binary"; {|{"x":1}|}; "https://api.test/x"
+    ; "-w"; "\n%{http_code}\n%{time_total}" ]
+    (curl_args ~method_:Freight.Ast.Post
+       ~headers:[ ("Content-Type", "application/json") ]
+       ~url:"https://api.test/x"
+       (Freight.Ast.Body_inline {|{"x":1}|}))
+
+let test_golden_curl_get_no_body _ =
+  assert_args
+    [ "-i"; "-s"; "-X"; "GET"; "https://api.test/"
+    ; "-w"; "\n%{http_code}\n%{time_total}" ]
+    (curl_args ~url:"https://api.test/" Freight.Ast.Body_none)
+
+let test_golden_curl_file_body_post _ =
+  assert_args
+    [ "-i"; "-s"; "-X"; "POST"; "--data-binary"; "@payload.json"
+    ; "https://api.test/x"; "-w"; "\n%{http_code}\n%{time_total}" ]
+    (curl_args ~method_:Freight.Ast.Post ~url:"https://api.test/x"
+       (Freight.Ast.Body_file "payload.json"))
+
+let test_golden_curl_file_body_put _ =
+  assert_args
+    [ "-i"; "-s"; "-X"; "PUT"; "-T"; "payload.json"
+    ; "https://api.test/x"; "-w"; "\n%{http_code}\n%{time_total}" ]
+    (curl_args ~method_:Freight.Ast.Put ~url:"https://api.test/x"
+       (Freight.Ast.Body_file "payload.json"))
+
+let test_golden_curl_multipart _ =
+  assert_args
+    [ "-i"; "-s"; "-X"; "POST"
+    ; "-F"; "file=@./f.xlsx;type=application/vnd.ms-excel;filename=f.xlsx"
+    ; "-F"; "note=hello"
+    ; "https://api.test/imports"; "-w"; "\n%{http_code}\n%{time_total}" ]
+    (curl_args ~method_:Freight.Ast.Post ~url:"https://api.test/imports"
+       (Freight.Ast.Body_multipart
+          [ { part_name = "file"
+            ; filename = Some "f.xlsx"
+            ; content_type = Some "application/vnd.ms-excel"
+            ; content = Freight.Ast.Part_file "./f.xlsx"
+            }
+          ; { part_name = "note"
+            ; filename = None
+            ; content_type = None
+            ; content = Freight.Ast.Part_text "hello"
+            } ]))
+
+let test_golden_curl_save_explicit_path _ =
+  assert_args
+    [ "-D"; "-"; "-o"; "./out.bin"; "-s"; "-X"; "GET"
+    ; "https://api.test/dl"; "-w"; "\n%{http_code}\n%{time_total}" ]
+    (curl_args ~url:"https://api.test/dl"
+       ~save_to:(Some { Freight.Ast.save_path = Some "./out.bin"; overwrite = false })
+       Freight.Ast.Body_none)
+
+let test_golden_curl_save_no_path_uses_i _ =
+  assert_args
+    [ "-i"; "-s"; "-X"; "GET"; "https://api.test/dl"
+    ; "-w"; "\n%{http_code}\n%{time_total}" ]
+    (curl_args ~url:"https://api.test/dl"
+       ~save_to:(Some { Freight.Ast.save_path = None; overwrite = false })
+       Freight.Ast.Body_none)
+
 let test_substitute_request_expands_save_path _ =
   let env = Freight.Env.of_list [ ("OUT", "/tmp/out") ] in
   let request =
@@ -1246,6 +1325,13 @@ let suite =
          "parse_save_redirect_with_body" >:: test_parse_save_redirect_with_body;
          "to_curl_save_uses_o_and_dump" >:: test_to_curl_save_uses_o_and_dump;
          "to_curl_no_save_uses_i" >:: test_to_curl_no_save_uses_i;
+         "golden_curl_inline_body" >:: test_golden_curl_inline_body;
+         "golden_curl_get_no_body" >:: test_golden_curl_get_no_body;
+         "golden_curl_file_body_post" >:: test_golden_curl_file_body_post;
+         "golden_curl_file_body_put" >:: test_golden_curl_file_body_put;
+         "golden_curl_multipart" >:: test_golden_curl_multipart;
+         "golden_curl_save_explicit_path" >:: test_golden_curl_save_explicit_path;
+         "golden_curl_save_no_path_uses_i" >:: test_golden_curl_save_no_path_uses_i;
          "substitute_request_expands_save_path" >:: test_substitute_request_expands_save_path;
          "parse_multipart_body" >:: test_parse_multipart_body;
          "to_curl_multipart" >:: test_to_curl_multipart;

@@ -182,6 +182,31 @@ GET {{BASE_URL}}/imports/template
 The response buffer shows the status and headers plus a `Saved N bytes to …`
 line; the bytes stream straight to disk via curl, so the file is byte-valid.
 
+### Assertions
+
+Declare expectations with `# @expect` metadata. `:FreightRun` annotates the
+response with a `✓`/`✗` Assertions section; `:FreightRunAll` counts a request
+whose assertions fail as **failed**, turning a runbook into a smoke suite.
+
+```http
+# @name create
+# @expect status 201
+# @expect header Content-Type contains application/json
+# @expect body data.id exists
+# @expect body data.status == active
+POST {{BASE_URL}}/widgets
+Content-Type: application/json
+
+{"name": "gadget"}
+```
+
+Grammar (`# @expect <target> <predicate>`):
+
+- `status <int>` — exact status
+- `header <name> equals|contains <value>` — case-insensitive header check
+- `body <path> exists` — `<path>` uses the response-chaining JSONPath subset
+- `body <path> ==|!=|contains <value>`
+
 ## Environment files
 
 freight.ml walks up from the `.http` file's directory and merges, in order:

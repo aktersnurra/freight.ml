@@ -387,6 +387,49 @@ let test_assert_body_malformed_json _ =
   let r = assertion_response ~status:200 ~headers:[] ~body:"not json" in
   check_fails r [ Freight.Ast.Expect_body { body_path = "id"; body_op = Freight.Ast.Op_exists; body_value = None } ]
 
+(* Deterministic Generated.env: fixed clock, a scripted random_int counter, and
+   a stub iso formatter (the real one uses Unix.gmtime in bin/). *)
+let generated_env ?(now = 1_700_000_000.0) ?(seq = [ 0 ]) () =
+  let remaining = ref seq in
+  let random_int _bound =
+    match !remaining with
+    | x :: rest -> remaining := rest; x
+    | [] -> 0
+  in
+  { Freight.Generated.now = (fun () -> now)
+  ; random_int
+  ; iso_of_epoch = (fun t -> Printf.sprintf "ISO(%d)" (int_of_float t))
+  }
+
+let test_generated_timestamp _ =
+  let src = Freight.Generated.source (generated_env ~now:1234.0 ()) in
+  assert_equal (Some "1234") (src "$timestamp")
+
+let test_generated_iso _ =
+  let src = Freight.Generated.source (generated_env ~now:1234.0 ()) in
+  assert_equal (Some "ISO(1234)") (src "$isoTimestamp")
+
+let test_generated_random_int_default _ =
+  let src = Freight.Generated.source (generated_env ~seq:[ 42 ] ()) in
+  assert_equal (Some "42") (src "$randomInt")
+
+let test_generated_random_int_range _ =
+  (* random_int returns 3; range 5:10 -> 5 + 3 = 8 *)
+  let src = Freight.Generated.source (generated_env ~seq:[ 3 ] ()) in
+  assert_equal (Some "8") (src "$randomInt:5:10")
+
+let test_generated_uuid_shape _ =
+  let src = Freight.Generated.source (generated_env ~seq:(List.init 16 (fun _ -> 0)) ()) in
+  match src "$uuid" with
+  | Some u ->
+    let re = Re.Perl.compile_pat "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" in
+    assert_bool ("uuid shape: " ^ u) (Re.execp re u)
+  | None -> assert_failure "expected a uuid"
+
+let test_generated_unknown _ =
+  let src = Freight.Generated.source (generated_env ()) in
+  assert_equal None (src "$nope")
+
 let test_assert_describe _ =
   assert_equal ~printer:Fun.id "status 201"
     (Freight.Assertion.describe (Freight.Ast.Expect_status 201));
@@ -1446,6 +1489,12 @@ let suite =
          "assert_body" >:: test_assert_body;
          "assert_body_malformed_json" >:: test_assert_body_malformed_json;
          "assert_describe" >:: test_assert_describe;
+         "generated_timestamp" >:: test_generated_timestamp;
+         "generated_iso" >:: test_generated_iso;
+         "generated_random_int_default" >:: test_generated_random_int_default;
+         "generated_random_int_range" >:: test_generated_random_int_range;
+         "generated_uuid_shape" >:: test_generated_uuid_shape;
+         "generated_unknown" >:: test_generated_unknown;
          "request_at_cursor_on_request_line" >:: test_request_at_cursor_on_request_line;
          "request_at_cursor_on_header_line" >:: test_request_at_cursor_on_header_line;
          "request_at_cursor_second_request" >:: test_request_at_cursor_second_request;

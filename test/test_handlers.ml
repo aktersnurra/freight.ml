@@ -1,5 +1,10 @@
 open OUnit2
 
+let contains ~needle hay =
+  let nl = String.length needle and hl = String.length hay in
+  let rec go i = i + nl <= hl && (String.sub hay i nl = needle || go (i + 1)) in
+  nl = 0 || go 0
+
 let has_call pred calls =
   List.exists pred calls
 
@@ -223,6 +228,82 @@ let test_freight_run_assertion_pass_and_fail _ =
   assert_bool "passing assertion shown" (any_line (fun l -> l = "✓ status 200"));
   assert_bool "failing assertion shown"
     (any_line (fun l -> contains ~needle:"✗ body missing exists" l))
+
+let curl_arg_matches pred calls =
+  has_call
+    (function
+     | Test_runtime_fake.Run_curl inv -> List.exists pred inv.Freight.Executor.args
+     | _ -> false)
+    calls
+
+let ok_response =
+  "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{}\n200\n0.010"
+
+let test_freight_run_dollar_env _ =
+  let config =
+    { Test_runtime_fake.default_config with
+      buffer_lines = [ "GET https://example.com/{{$env.API_KEY}}/x" ]
+    ; env_vars = [ ("API_KEY", "secret42") ]
+    ; curl_result = Ok ok_response
+    ; fork_mode = `Run_immediately
+    }
+  in
+  let (), calls =
+    Test_runtime_fake.run config @@ fun () -> Handlers.freight_run (State.create ())
+  in
+  assert_bool "runs curl" (has_run_curl calls);
+  assert_bool "url has the $env value"
+    (curl_arg_matches (fun a -> a = "https://example.com/secret42/x") calls)
+
+let test_freight_run_dollar_env_unset_does_not_curl _ =
+  let config =
+    { Test_runtime_fake.default_config with
+      buffer_lines = [ "GET https://example.com/{{$env.MISSING}}/x" ]
+    ; env_vars = []
+    ; fork_mode = `Run_immediately
+    }
+  in
+  let (), calls =
+    Test_runtime_fake.run config @@ fun () -> Handlers.freight_run (State.create ())
+  in
+  assert_bool "does not run curl" (not (has_run_curl calls))
+
+let test_freight_run_os_env_fallback _ =
+  (* A bare {{TOKEN}} absent from .env but present in the OS environment. *)
+  let config =
+    { Test_runtime_fake.default_config with
+      buffer_lines = [ "GET https://example.com/{{TOKEN}}/x" ]
+    ; env = Freight.Env.empty
+    ; env_vars = [ ("TOKEN", "from-os") ]
+    ; curl_result = Ok ok_response
+    ; fork_mode = `Run_immediately
+    }
+  in
+  let (), calls =
+    Test_runtime_fake.run config @@ fun () -> Handlers.freight_run (State.create ())
+  in
+  assert_bool "url uses the OS fallback value"
+    (curl_arg_matches (fun a -> a = "https://example.com/from-os/x") calls)
+
+let test_freight_run_generated_uuid _ =
+  (* Scripted random bytes make the uuid deterministic. *)
+  let config =
+    { Test_runtime_fake.default_config with
+      buffer_lines = [ "GET https://example.com/{{$uuid}}" ]
+    ; random_ints = List.init 16 (fun _ -> 0)
+    ; curl_result = Ok ok_response
+    ; fork_mode = `Run_immediately
+    }
+  in
+  let (), calls =
+    Test_runtime_fake.run config @@ fun () -> Handlers.freight_run (State.create ())
+  in
+  assert_bool "runs curl" (has_run_curl calls);
+  assert_bool "url has a uuid-shaped segment"
+    (curl_arg_matches
+       (fun a ->
+         contains ~needle:"00000000-0000-4000-8000-000000000000" a)
+       calls)
 
 let test_freight_run_success _ =
   let curl_output =
@@ -1168,6 +1249,10 @@ let suite =
     ; "freight_run curl error" >:: test_freight_run_curl_error
     ; "freight_run success" >:: test_freight_run_success
     ; "freight_run assertion pass and fail" >:: test_freight_run_assertion_pass_and_fail
+    ; "freight_run $env" >:: test_freight_run_dollar_env
+    ; "freight_run $env unset does not curl" >:: test_freight_run_dollar_env_unset_does_not_curl
+    ; "freight_run OS env fallback" >:: test_freight_run_os_env_fallback
+    ; "freight_run generated uuid" >:: test_freight_run_generated_uuid
     ; "freight_run_all assertion failure is failed" >:: test_freight_run_all_assertion_failure_is_failed
     ; "freight_run_all assertion pass is success" >:: test_freight_run_all_assertion_pass_is_success
     ; "freight_run unresolved var does not curl" >:: test_freight_run_unresolved_var_does_not_curl

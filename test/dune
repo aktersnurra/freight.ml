@@ -15,5 +15,5 @@
 
 (test
  (name test_e2e)
- (modules test_e2e)
+ (modules test_e2e mock_server)
  (libraries freight ounit2 unix threads.posix))

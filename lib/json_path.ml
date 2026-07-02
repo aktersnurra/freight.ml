@@ -14,8 +14,13 @@ let parse path =
   |> List.filter (fun s -> s <> "")
   |> List.map (fun segment ->
          let n = String.length segment in
+         (* A bracketed segment [n] is an array index when n is an integer;
+            anything else (including a malformed [abc]) is treated as a literal
+            field so [parse] is total and never raises on user input. *)
          if n >= 2 && segment.[0] = '[' && segment.[n - 1] = ']' then
-           Index (int_of_string (String.sub segment 1 (n - 2)))
+           match int_of_string_opt (String.sub segment 1 (n - 2)) with
+           | Some i -> Index i
+           | None -> Field segment
          else
            match int_of_string_opt segment with
            | Some i -> Index i

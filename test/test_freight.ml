@@ -1030,6 +1030,24 @@ let test_json_path_lookup_array _ =
   assert_equal (Some "8")
     (Freight.Json_path.lookup json (Freight.Json_path.parse "items[1].id"))
 
+let test_json_path_parse_never_raises _ =
+  (* A malformed path/reference is user data — parse must be total, never raise. *)
+  List.iter
+    (fun bad ->
+      match Freight.Json_path.parse bad with
+      | _ -> ()
+      | exception e ->
+        assert_failure
+          (Printf.sprintf "parse %S raised %s" bad (Printexc.to_string e)))
+    [ "items[abc]"; "items[]"; "a[1x]"; "["; "]"; "x[99999999999999999999]"; "a..b" ]
+
+let test_json_path_bad_index_is_no_match _ =
+  (* items[abc] does not resolve to an array element; it yields None, which the
+     caller surfaces as an unresolved variable (fail-fast), not a crash. *)
+  let json = Yojson.Safe.from_string {|{"items":[{"id":1}]}|} in
+  assert_equal None
+    (Freight.Json_path.lookup json (Freight.Json_path.parse "items[abc].id"))
+
 let test_json_path_lookup_whole_float _ =
   (* A JSON float like 9.0 must render as valid JSON "9.0", not OCaml's "9." *)
   let json = Yojson.Safe.from_string {|{"price":9.0}|} in
@@ -1279,6 +1297,8 @@ let suite =
          "json_path_parse_index_dotted" >:: test_json_path_parse_index_dotted;
          "json_path_lookup_nested" >:: test_json_path_lookup_nested;
          "json_path_lookup_array" >:: test_json_path_lookup_array;
+         "json_path_parse_never_raises" >:: test_json_path_parse_never_raises;
+         "json_path_bad_index_is_no_match" >:: test_json_path_bad_index_is_no_match;
          "json_path_lookup_whole_float" >:: test_json_path_lookup_whole_float;
          "json_path_lookup_fractional_float" >:: test_json_path_lookup_fractional_float;
          "json_path_lookup_large_float" >:: test_json_path_lookup_large_float;

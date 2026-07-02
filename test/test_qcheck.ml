@@ -320,6 +320,35 @@ let test_at_cursor_empty_is_no_request =
       | Error `No_request -> true
       | _ -> false)
 
+(* ── J2: Parser round-trip ─────────────────────────────────────────────── *)
+
+(* Build a canonical .http request from generated parts and confirm the parser
+   recovers the method, url, and headers. *)
+let test_parse_roundtrip =
+  Test.make ~name:"parse recovers method/url/headers from canonical .http"
+    ~count:300
+    (Gen.triple gen_named_method
+       (Gen.string_size ~gen:(Gen.char_range 'a' 'z') (Gen.int_range 1 15))
+       (Gen.list_size (Gen.int_range 0 4) (Gen.pair gen_header_name gen_header_value)))
+    (fun (method_, host, headers) ->
+      (* dedupe header names (parser keeps all, but equal keys are fine to keep;
+         we only assert the set is recovered) and drop empty values which trim
+         away *)
+      let headers = List.filter (fun (_, v) -> String.trim v <> "") headers in
+      let url = "https://" ^ host in
+      let header_lines =
+        List.map (fun (k, v) -> k ^ ": " ^ v) headers |> String.concat "\n"
+      in
+      let source =
+        Ast.method_to_string method_ ^ " " ^ url
+        ^ (if headers = [] then "" else "\n" ^ header_lines)
+        ^ "\n"
+      in
+      match Parser.parse_string source with
+      | Ok { requests = [ req ]; _ } ->
+        req.method_ = method_ && req.url = url && req.headers = headers
+      | _ -> false)
+
 (* ── K: Executor.to_curl invariants ────────────────────────────────────── *)
 
 let test_to_curl_always_has_method =
@@ -391,6 +420,7 @@ let () =
       (* J *)
       test_at_cursor_valid_request;
       test_at_cursor_empty_is_no_request;
+      test_parse_roundtrip;
       (* K *)
       test_to_curl_always_has_method;
       test_to_curl_always_has_url;

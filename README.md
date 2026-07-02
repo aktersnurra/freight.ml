@@ -225,6 +225,23 @@ BASE_URL=https://api.example.com
 PASSWORD=hunter2
 ```
 
+## Dynamic values
+
+Beyond `.env` files, `{{…}}` also resolves:
+
+- `{{$env.NAME}}` — the OS environment variable `NAME`
+- a bare `{{VAR}}` falls back to the OS environment when it is absent from the
+  `.env` files (so secrets already in your shell need no `.env` entry)
+- `{{$uuid}}` — a random v4 UUID
+- `{{$timestamp}}` — Unix epoch seconds
+- `{{$isoTimestamp}}` — ISO-8601 UTC, e.g. `2026-07-03T12:00:00Z`
+- `{{$randomInt}}` — a random integer in `[0, 1000)`
+- `{{$randomInt:a:b}}` — a random integer in `[a, b)`
+
+Precedence, first match wins: generated values → `$env` → response chaining →
+`.env` files → OS-environment fallback. A reference that resolves nowhere is
+reported as an unresolved variable and the request fails fast.
+
 ## Response chaining
 
 Named request responses are addressable from later requests via

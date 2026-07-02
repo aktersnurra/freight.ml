@@ -1032,6 +1032,40 @@ let test_apply_host_header_case_insensitive _ =
   assert_equal "https://api.example.com/ping" result.Freight.Ast.url;
   assert_equal [] result.Freight.Ast.headers
 
+let test_json_path_parse_dotted _ =
+  assert_equal [ Freight.Json_path.Field "data"; Field "id" ]
+    (Freight.Json_path.parse "data.id")
+
+let test_json_path_parse_index_bracket _ =
+  assert_equal
+    [ Freight.Json_path.Field "items"; Index 0; Field "id" ]
+    (Freight.Json_path.parse "items[0].id")
+
+let test_json_path_parse_index_dotted _ =
+  assert_equal
+    [ Freight.Json_path.Field "items"; Index 2; Field "id" ]
+    (Freight.Json_path.parse "items.2.id")
+
+let test_json_path_lookup_nested _ =
+  let json = Yojson.Safe.from_string {|{"data":{"id":"abc"}}|} in
+  assert_equal (Some "abc")
+    (Freight.Json_path.lookup json (Freight.Json_path.parse "data.id"))
+
+let test_json_path_lookup_array _ =
+  let json = Yojson.Safe.from_string {|{"items":[{"id":7},{"id":8}]}|} in
+  assert_equal (Some "8")
+    (Freight.Json_path.lookup json (Freight.Json_path.parse "items[1].id"))
+
+let test_json_path_lookup_missing _ =
+  let json = Yojson.Safe.from_string {|{"data":{"id":"abc"}}|} in
+  assert_equal None
+    (Freight.Json_path.lookup json (Freight.Json_path.parse "data.missing"))
+
+let test_json_path_lookup_non_scalar_leaf _ =
+  let json = Yojson.Safe.from_string {|{"data":{"id":"abc"}}|} in
+  assert_equal None
+    (Freight.Json_path.lookup json (Freight.Json_path.parse "data"))
+
 let suite =
   "freight"
   >::: [
@@ -1127,6 +1161,13 @@ let suite =
          "named_buffer_name" >:: test_named_buffer_name;
          "slugged_buffer_name" >:: test_slugged_buffer_name;
          "filetype_mapping" >:: test_filetype_mapping;
+         "json_path_parse_dotted" >:: test_json_path_parse_dotted;
+         "json_path_parse_index_bracket" >:: test_json_path_parse_index_bracket;
+         "json_path_parse_index_dotted" >:: test_json_path_parse_index_dotted;
+         "json_path_lookup_nested" >:: test_json_path_lookup_nested;
+         "json_path_lookup_array" >:: test_json_path_lookup_array;
+         "json_path_lookup_missing" >:: test_json_path_lookup_missing;
+         "json_path_lookup_non_scalar_leaf" >:: test_json_path_lookup_non_scalar_leaf;
        ]
 
 let () = run_test_tt_main suite

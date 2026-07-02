@@ -7,6 +7,9 @@ let of_list pairs = List.fold_left (fun env (key, data) -> String_map.add key da
 let find env key = String_map.find_opt key env
 let add env ~key ~data = String_map.add key data env
 
+let overlay ~base ~over =
+  String_map.union (fun _key _base_data over_data -> Some over_data) base over
+
 let read_lines path =
   let channel = open_in path in
   Fun.protect

@@ -277,8 +277,8 @@ let test_substitute_request_replaces_inline_body =
       | Ast.Body_inline s -> String.equal s value
       | _ -> false)
 
-let test_substitute_request_preserves_file_body =
-  Test.make ~name:"substitute_request leaves Body_file unchanged" ~count:200
+let test_substitute_request_replaces_file_body_path =
+  Test.make ~name:"substitute_request replaces {{var}} in Body_file path" ~count:200
     (Gen.pair gen_env_key gen_plain_value)
     (fun (key, value) ->
       let env = Env.of_list [ (key, value) ] in
@@ -286,7 +286,7 @@ let test_substitute_request_preserves_file_body =
       let req = { dummy_request with body = Ast.Body_file path } in
       let result = Resolve.substitute_request env req in
       match result.body with
-      | Ast.Body_file p -> String.equal p path
+      | Ast.Body_file p -> String.equal p (value ^ ".json")
       | _ -> false)
 
 let test_substitute_request_empty_env_preserves_vars =
@@ -384,7 +384,7 @@ let () =
       test_substitute_request_replaces_url;
       test_substitute_request_replaces_headers;
       test_substitute_request_replaces_inline_body;
-      test_substitute_request_preserves_file_body;
+      test_substitute_request_replaces_file_body_path;
       test_substitute_request_empty_env_preserves_vars;
       (* J *)
       test_at_cursor_valid_request;

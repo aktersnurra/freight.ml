@@ -282,6 +282,105 @@ let test_parse_body_file _ =
       assert_equal (Freight.Ast.Body_file "fixtures/payload.json") request.body
   | _ -> assert_failure "expected one request"
 
+(* Two requests separated by ###, with a leading comment block and a trailing
+   comment-only block. Line indices (0-based) for request_at_cursor:
+     0: # first
+     1: GET https://one.test    <- request 1 line
+     2: Accept: text/plain       <- request 1 header
+     3: (blank)
+     4: ###
+     5: # second
+     6: POST https://two.test    <- request 2 line
+     7: (blank)
+     8: ###
+     9: # trailing comment only  <- no request line in this block *)
+let cursor_source =
+  String.concat "\n"
+    [ "# first"
+    ; "GET https://one.test"
+    ; "Accept: text/plain"
+    ; ""
+    ; "###"
+    ; "# second"
+    ; "POST https://two.test"
+    ; ""
+    ; "###"
+    ; "# trailing comment only"
+    ]
+
+let test_request_at_cursor_on_request_line _ =
+  match Freight.Parser.request_at_cursor cursor_source 1 with
+  | Some request -> assert_equal "https://one.test" request.Freight.Ast.url
+  | None -> assert_failure "expected first request"
+
+let test_request_at_cursor_on_header_line _ =
+  match Freight.Parser.request_at_cursor cursor_source 2 with
+  | Some request -> assert_equal "https://one.test" request.Freight.Ast.url
+  | None -> assert_failure "expected first request"
+
+let test_request_at_cursor_second_request _ =
+  match Freight.Parser.request_at_cursor cursor_source 6 with
+  | Some request -> assert_equal "https://two.test" request.Freight.Ast.url
+  | None -> assert_failure "expected second request"
+
+let test_request_at_cursor_leading_comment_is_none _ =
+  assert_equal None (Freight.Parser.request_at_cursor cursor_source 0)
+
+let test_request_at_cursor_blank_gap_is_none _ =
+  (* line 3 is the blank line after request 1's content *)
+  assert_equal None (Freight.Parser.request_at_cursor cursor_source 3)
+
+let test_request_at_cursor_trailing_comment_is_none _ =
+  (* line 9 is a comment-only block after the last request *)
+  assert_equal None (Freight.Parser.request_at_cursor cursor_source 9)
+
+let test_env_overlay_over_wins _ =
+  let base = Freight.Env.of_list [ ("host", "base"); ("only_base", "b") ] in
+  let over = Freight.Env.of_list [ ("host", "over"); ("only_over", "o") ] in
+  let merged = Freight.Env.overlay ~base ~over in
+  assert_equal (Some "over") (Freight.Env.find merged "host");
+  assert_equal (Some "b") (Freight.Env.find merged "only_base");
+  assert_equal (Some "o") (Freight.Env.find merged "only_over")
+
+let test_unresolved_request_reports_missing _ =
+  let env = Freight.Env.of_list [ ("host", "https://api.example.com") ] in
+  let request =
+    { Freight.Ast.name = None
+    ; method_ = Freight.Ast.Post
+    ; url = "{{host}}/imports/{{preview.response.body.id}}/apply"
+    ; headers = [ ("X-Api-Key", "{{API_KEY}}") ]
+    ; body = Freight.Ast.Body_inline "{ \"hash\": \"{{preview.response.body.hash}}\" }"
+    }
+  in
+  assert_equal
+    [ "API_KEY"; "preview.response.body.hash"; "preview.response.body.id" ]
+    (Freight.Resolve.unresolved_request env request)
+
+let test_unresolved_request_empty_when_resolved _ =
+  let env = Freight.Env.of_list [ ("host", "https://api.example.com") ] in
+  let request =
+    { Freight.Ast.name = None
+    ; method_ = Freight.Ast.Get
+    ; url = "{{host}}/ping"
+    ; headers = []
+    ; body = Freight.Ast.Body_none
+    }
+  in
+  assert_equal [] (Freight.Resolve.unresolved_request env request)
+
+let test_substitute_request_expands_body_file_path _ =
+  let env = Freight.Env.of_list [ ("DIR", "/tmp/payloads") ] in
+  let request =
+    { Freight.Ast.name = None
+    ; method_ = Freight.Ast.Post
+    ; url = "https://api.example.com/upload"
+    ; headers = []
+    ; body = Freight.Ast.Body_file "{{DIR}}/payload.json"
+    }
+  in
+  let resolved = Freight.Resolve.substitute_request env request in
+  assert_equal (Freight.Ast.Body_file "/tmp/payloads/payload.json") resolved.body
+
 let test_parse_crlf_and_trailing_whitespace _ =
   let file =
     parse_ok
@@ -776,6 +875,21 @@ let suite =
          "parse error reports request line in second block"
          >:: test_parse_error_reports_request_line_in_second_block;
          "parse_body_file" >:: test_parse_body_file;
+         "request_at_cursor_on_request_line" >:: test_request_at_cursor_on_request_line;
+         "request_at_cursor_on_header_line" >:: test_request_at_cursor_on_header_line;
+         "request_at_cursor_second_request" >:: test_request_at_cursor_second_request;
+         "request_at_cursor_leading_comment_is_none"
+         >:: test_request_at_cursor_leading_comment_is_none;
+         "request_at_cursor_blank_gap_is_none"
+         >:: test_request_at_cursor_blank_gap_is_none;
+         "request_at_cursor_trailing_comment_is_none"
+         >:: test_request_at_cursor_trailing_comment_is_none;
+         "env_overlay_over_wins" >:: test_env_overlay_over_wins;
+         "unresolved_request_reports_missing" >:: test_unresolved_request_reports_missing;
+         "unresolved_request_empty_when_resolved"
+         >:: test_unresolved_request_empty_when_resolved;
+         "substitute_request_expands_body_file_path"
+         >:: test_substitute_request_expands_body_file_path;
          "parse_crlf_and_trailing_whitespace"
          >:: test_parse_crlf_and_trailing_whitespace;
          "env_substitute_unknown_preserved"

@@ -151,16 +151,41 @@ let parse_file path =
         | Error error -> Error error)
   with Sys_error message -> make_error message
 
+(* The content span of a block runs from its request line (the first non-blank,
+   non-comment line) through its last non-blank line. [start] is the 1-based line
+   number of the block's first line; the returned span is 0-based inclusive to
+   match the cursor coordinate system. Returns [None] when the block holds no
+   request line (comment/blank only). *)
+let block_content_span ~start block =
+  let indexed = List.mapi (fun offset line -> (start - 1 + offset, line)) block in
+  let request_line =
+    List.find_map
+      (fun (index, line) ->
+        let trimmed = trim line in
+        if trimmed = "" || starts_with ~prefix:"#" trimmed then None
+        else Some index)
+      indexed
+  in
+  match request_line with
+  | None -> None
+  | Some first ->
+    let last =
+      List.fold_left
+        (fun acc (index, line) -> if trim line <> "" then index else acc)
+        first indexed
+    in
+    Some (first, last)
+
 let request_at_cursor source cursor_line =
-  match parse_source_with_lines source with
-  | Error _ -> None
-  | Ok [] -> None
-  | Ok pairs ->
-    (* Pick the last request whose block starts at or before the cursor *)
-    let result = List.fold_left (fun acc (start, req) ->
-      if start <= cursor_line then Some req else acc
-    ) None pairs in
-    (* Fall back to first request if cursor is before all blocks *)
-    (match result with
-     | Some _ -> result
-     | None -> Some (snd (List.hd pairs)))
+  let blocks = split_lines source |> split_blocks in
+  let rec loop = function
+    | [] -> None
+    | (start, block) :: rest -> (
+        match block_content_span ~start block with
+        | Some (first, last) when first <= cursor_line && cursor_line <= last -> (
+            match parse_block ~start_line:start block with
+            | Ok request -> Some request
+            | Error _ -> None)
+        | _ -> loop rest)
+  in
+  loop blocks

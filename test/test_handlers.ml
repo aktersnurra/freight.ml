@@ -214,6 +214,90 @@ let test_freight_run_success _ =
   assert_bool "H keymap set" (has_set_keymap ~key:"H" calls);
   assert_bool "A keymap set" (has_set_keymap ~key:"A" calls)
 
+let test_freight_run_unresolved_var_does_not_curl _ =
+  let config =
+    { Test_runtime_fake.default_config with
+      buffer_lines =
+        [ "# @name apply"
+        ; "POST https://example.com/{{preview.response.body.id}}/apply"
+        ]
+    ; cursor = { Freight_effect.Cursor.row = 1; col = 0 }
+    ; fork_mode = `Run_immediately
+    }
+  in
+  let (), calls =
+    Test_runtime_fake.run config @@ fun () ->
+      Handlers.freight_run (State.create ())
+  in
+  let message =
+    "Unresolved variables: preview.response.body.id — run the request that \
+     defines them first, or add them to .env."
+  in
+  let shows_line line calls =
+    has_call
+      (function
+       | Test_runtime_fake.Show_scratch v -> List.mem line v.lines
+       | Test_runtime_fake.Update_scratch (_, v) -> List.mem line v.lines
+       | _ -> false)
+      calls
+  in
+  assert_bool "does not run curl" (not (has_run_curl calls));
+  assert_bool "reports the unresolved variable" (shows_line message calls)
+
+let test_freight_run_chaining_survives_across_runs _ =
+  (* First run stores preview.response.body.id in state.env; the second run,
+     with a buffer_dir set (which triggers a fresh .env load), must still see
+     that chaining variable. *)
+  let preview_output =
+    "HTTP/1.1 200 OK\r\n\
+     Content-Type: application/json\r\n\
+     \r\n\
+     {\"id\":\"abc123\"}\n\
+     200\n\
+     0.010"
+  in
+  let state = State.create () in
+  let preview_config =
+    { Test_runtime_fake.default_config with
+      buffer_lines = [ "# @name preview"; "GET https://example.com/preview" ]
+    ; buffer_dir = Some "/tmp/does-not-exist"
+    ; cursor = { Freight_effect.Cursor.row = 1; col = 0 }
+    ; curl_result = Ok preview_output
+    ; env = Freight.Env.empty
+    ; fork_mode = `Run_immediately
+    }
+  in
+  let (), _ =
+    Test_runtime_fake.run preview_config @@ fun () -> Handlers.freight_run state
+  in
+  assert_equal ~printer:(function Some s -> s | None -> "<none>")
+    (Some "abc123")
+    (Freight.Env.find state.State.env "preview.response.body.id");
+  let apply_config =
+    { Test_runtime_fake.default_config with
+      buffer_lines =
+        [ "# @name apply"
+        ; "POST https://example.com/{{preview.response.body.id}}/apply"
+        ]
+    ; buffer_dir = Some "/tmp/does-not-exist"
+    ; cursor = { Freight_effect.Cursor.row = 1; col = 0 }
+    ; curl_result = Ok preview_output
+    ; env = Freight.Env.empty
+    ; fork_mode = `Run_immediately
+    }
+  in
+  let (), calls =
+    Test_runtime_fake.run apply_config @@ fun () -> Handlers.freight_run state
+  in
+  assert_bool "runs curl (variable resolved)" (has_run_curl calls);
+  assert_bool "curl url has the substituted id"
+    (has_call
+       (function
+        | Test_runtime_fake.Run_curl invocation ->
+          List.mem "https://example.com/abc123/apply" invocation.Freight.Executor.args
+        | _ -> false)
+       calls)
+
 let test_freight_run_all_runs_every_request _ =
   let curl_output =
     "HTTP/1.1 200 OK\r\n\
@@ -832,6 +916,8 @@ let suite =
     ; "freight_run no request" >:: test_freight_run_no_request
     ; "freight_run curl error" >:: test_freight_run_curl_error
     ; "freight_run success" >:: test_freight_run_success
+    ; "freight_run unresolved var does not curl" >:: test_freight_run_unresolved_var_does_not_curl
+    ; "freight_run chaining survives across runs" >:: test_freight_run_chaining_survives_across_runs
     ; "freight_run_all runs every request" >:: test_freight_run_all_runs_every_request
     ; "freight_run_all groups results" >:: test_freight_run_all_groups_results
     ; "freight_run_all groups HTTP errors as failed" >:: test_freight_run_all_groups_http_errors_as_failed

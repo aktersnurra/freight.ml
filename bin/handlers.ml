@@ -24,6 +24,14 @@ let show_error message =
        ~filetype:"freight"
        ~lines:(Request_view.render_message ~title:"Error" ~body:[ message ]))
 
+(* Variables left as literal [{{...}}] in an already-substituted request will be
+   shipped verbatim to curl and fail cryptically, so report them up front. *)
+let unresolved_message unresolved =
+  let names = String.concat ", " unresolved in
+  Printf.sprintf
+    "Unresolved variables: %s — run the request that defines them first, or add them to .env."
+    names
+
 let current_source () =
   let buf = Freight_effect.current_buffer () in
   let lines = Freight_effect.buffer_lines buf in
@@ -32,7 +40,11 @@ let current_source () =
 
 let resolve_env state buf =
   match Freight_effect.buffer_dir buf with
-  | Some dir -> Freight_effect.load_env ~dir ~active_env:state.State.active_env
+  | Some dir ->
+    (* Load .env files as the base, then overlay the accumulated env so that
+       response-chaining variables injected by earlier runs survive. *)
+    let base = Freight_effect.load_env ~dir ~active_env:state.State.active_env in
+    Freight.Env.overlay ~base ~over:state.State.env
   | None -> state.State.env
 
 let resolve_request state source cursor_line buf =
@@ -89,7 +101,7 @@ let freight_inspect state =
     in
     set_buf_keymaps scratch_buf
   | Error `No_request ->
-    show_error_state state "No requests found in buffer."
+    show_error_state state "No request under cursor."
   | Ok request ->
     let invocation = Freight.Executor.to_curl request in
     let scratch_buf =
@@ -206,7 +218,12 @@ let freight_run state =
     in
     set_buf_keymaps scratch_buf
   | Error `No_request ->
-    show_error_state state "No requests found in buffer."
+    show_error_state state "No request under cursor."
+  | Ok request when Freight.Resolve.unresolved_request Freight.Env.empty request <> [] ->
+    let unresolved =
+      Freight.Resolve.unresolved_request Freight.Env.empty request
+    in
+    show_error_state state (unresolved_message unresolved)
   | Ok request ->
     let invocation = Freight.Executor.to_curl request in
     let name = Freight.Buffer.buffer_name request in
@@ -247,7 +264,7 @@ let freight_run_all state =
   let source_window =
     Freight_effect.nvim_call "nvim_get_current_win" [] |> decode_handle
   in
-  let env = resolve_env state buf in
+  let base_env = resolve_env state buf in
   match Freight.Parser.parse_string source with
   | Error err ->
     let scratch_buf =
@@ -260,17 +277,13 @@ let freight_run_all state =
   | Ok { Freight.Ast.requests = []; _ } ->
     show_error_state state "No requests found in buffer."
   | Ok _file ->
+    (* Keep the requests unsubstituted here; each is resolved lazily inside the
+       run loop against the accumulating env so that later requests can see the
+       response variables injected by earlier ones. *)
     let requests =
       match Freight.Parser.parse_source_with_lines source with
       | Error _ -> []
-      | Ok pairs ->
-        List.map
-          (fun (source_line, request) ->
-            ( source_line
-            , request
-              |> Freight.Resolve.substitute_request env
-              |> Freight.Ast.apply_host_header ))
-          pairs
+      | Ok pairs -> pairs
     in
     let name = "freight://run-all" in
     let loading_buf =
@@ -287,9 +300,29 @@ let freight_run_all state =
     Freight_effect.fork "FreightRunAll" @@ fun () ->
       let results = ref [] in
       List.iteri
-        (fun index (source_line, request) ->
+        (fun index (source_line, raw_request) ->
           let line_number = index + 1 in
           let source_buffer = buf in
+          (* Resolve against the current env, which accrues the response
+             variables injected by earlier requests in this run. *)
+          let env =
+            Freight.Env.overlay ~base:base_env ~over:state.State.env
+          in
+          let request =
+            raw_request
+            |> Freight.Resolve.substitute_request env
+            |> Freight.Ast.apply_host_header
+          in
+          let unresolved =
+            Freight.Resolve.unresolved_request Freight.Env.empty request
+          in
+          if unresolved <> [] then
+            results :=
+              State.Run_all_failure
+                { line_number; source_buffer; source_window; source_line
+                ; request; message = unresolved_message unresolved; response = None }
+              :: !results
+          else begin
           let invocation = Freight.Executor.to_curl request in
           match Freight_effect.run_curl invocation with
           | Error message ->
@@ -324,7 +357,8 @@ let freight_run_all state =
                    State.Run_all_success
                      { line_number; source_buffer; source_window; source_line; request; response; verbose = "" }
                    :: !results
-               end);
+               end)
+          end;
           state.State.run_all_results <- List.rev !results;
           Freight_effect.update_scratch loading_buf ~name ~filetype:"freight"
             ~lines:(render_run_all_results ~progress:(line_number, List.length requests)

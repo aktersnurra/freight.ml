@@ -32,6 +32,44 @@ let parse_name line =
     if name = "" then None else Some name
   else None
 
+(* Parse a [# @expect <target> <predicate>] metadata line. Returns [None] when
+   the line is not an @expect directive, [Some (Ok a)] when valid, and
+   [Some (Error msg)] when it is an @expect line but malformed. *)
+let parse_expect line =
+  let trimmed = trim line in
+  if not (starts_with ~prefix:"# @expect" trimmed) then None
+  else
+    let rest =
+      String.sub trimmed 9 (String.length trimmed - 9)
+      |> trim
+      |> String.split_on_char ' '
+      |> List.filter (fun s -> s <> "")
+    in
+    let join = String.concat " " in
+    match rest with
+    | [ "status"; code ] -> (
+        match int_of_string_opt code with
+        | Some n -> Some (Ok (Ast.Expect_status n))
+        | None -> Some (Error ("malformed @expect status: " ^ trimmed)))
+    | "header" :: name :: op :: value -> (
+        let value = join value in
+        match op with
+        | "equals" ->
+            Some (Ok (Ast.Expect_header { header_name = name; header_op = Op_equals; header_value = value }))
+        | "contains" ->
+            Some (Ok (Ast.Expect_header { header_name = name; header_op = Op_contains; header_value = value }))
+        | _ -> Some (Error ("malformed @expect header: " ^ trimmed)))
+    | [ "body"; path; "exists" ] ->
+        Some (Ok (Ast.Expect_body { body_path = path; body_op = Op_exists; body_value = None }))
+    | "body" :: path :: op :: value -> (
+        let value = Some (join value) in
+        match op with
+        | "==" -> Some (Ok (Ast.Expect_body { body_path = path; body_op = Op_eq; body_value = value }))
+        | "!=" -> Some (Ok (Ast.Expect_body { body_path = path; body_op = Op_neq; body_value = value }))
+        | "contains" -> Some (Ok (Ast.Expect_body { body_path = path; body_op = Op_body_contains; body_value = value }))
+        | _ -> Some (Error ("malformed @expect body: " ^ trimmed)))
+    | _ -> Some (Error ("malformed @expect: " ^ trimmed))
+
 let parse_request_line line =
   let open Angstrom in
   let space = satisfy (function ' ' | '\t' -> true | _ -> false) in
@@ -202,17 +240,22 @@ let parse_multipart ~boundary body_lines =
   split_multipart ~boundary body_lines |> List.filter_map parse_part
 
 let parse_block ~start_line block =
-  let rec skip_leading_metadata line_number name = function
+  let rec skip_leading_metadata line_number name assertions = function
     | [] -> make_error ~line:line_number "missing request line"
     | line :: rest when trim line = "" ->
-        skip_leading_metadata (line_number + 1) name rest
+        skip_leading_metadata (line_number + 1) name assertions rest
     | line :: rest -> (
         match parse_name line with
         | Some parsed_name ->
-            skip_leading_metadata (line_number + 1) (Some parsed_name) rest
-        | None when starts_with ~prefix:"#" (trim line) ->
-            skip_leading_metadata (line_number + 1) name rest
+            skip_leading_metadata (line_number + 1) (Some parsed_name) assertions rest
         | None -> (
+          match parse_expect line with
+          | Some (Ok assertion) ->
+              skip_leading_metadata (line_number + 1) name (assertion :: assertions) rest
+          | Some (Error message) -> make_error ~line:line_number ~snippet:line message
+          | None when starts_with ~prefix:"#" (trim line) ->
+            skip_leading_metadata (line_number + 1) name assertions rest
+          | None -> (
             match parse_request_line line with
             | Error message -> make_error ~line:line_number ~snippet:line message
             | Ok (method_, url) ->
@@ -232,9 +275,11 @@ let parse_block ~start_line block =
                       (headers, Ast.Body_multipart (parse_multipart ~boundary body_lines))
                   | None -> (headers, parse_body body_lines)
                 in
-                Ok { Ast.name; method_; url; headers; body; save_to; assertions = [] }))
+                Ok
+                  { Ast.name; method_; url; headers; body; save_to
+                  ; assertions = List.rev assertions })))
   in
-  skip_leading_metadata start_line None block
+  skip_leading_metadata start_line None [] block
 
 let parse_source source =
   let blocks = split_lines source |> split_blocks in

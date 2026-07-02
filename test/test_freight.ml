@@ -296,6 +296,54 @@ let test_parse_body_file _ =
       assert_equal (Freight.Ast.Body_file "fixtures/payload.json") request.body
   | _ -> assert_failure "expected one request"
 
+let test_parse_expect_status _ =
+  let file = parse_ok "# @expect status 201\nGET https://x/\n" in
+  match file.requests with
+  | [ r ] -> assert_equal [ Freight.Ast.Expect_status 201 ] r.Freight.Ast.assertions
+  | _ -> assert_failure "one request"
+
+let test_parse_expect_header _ =
+  let file = parse_ok "# @expect header Content-Type contains json\nGET https://x/\n" in
+  match file.requests with
+  | [ r ] ->
+    assert_equal
+      [ Freight.Ast.Expect_header
+          { header_name = "Content-Type"; header_op = Freight.Ast.Op_contains; header_value = "json" } ]
+      r.Freight.Ast.assertions
+  | _ -> assert_failure "one request"
+
+let test_parse_expect_body_exists _ =
+  let file = parse_ok "# @expect body data.id exists\nGET https://x/\n" in
+  match file.requests with
+  | [ r ] ->
+    assert_equal
+      [ Freight.Ast.Expect_body { body_path = "data.id"; body_op = Freight.Ast.Op_exists; body_value = None } ]
+      r.Freight.Ast.assertions
+  | _ -> assert_failure "one request"
+
+let test_parse_expect_body_eq _ =
+  let file = parse_ok "# @expect body data.status == active\nGET https://x/\n" in
+  match file.requests with
+  | [ r ] ->
+    assert_equal
+      [ Freight.Ast.Expect_body { body_path = "data.status"; body_op = Freight.Ast.Op_eq; body_value = Some "active" } ]
+      r.Freight.Ast.assertions
+  | _ -> assert_failure "one request"
+
+let test_parse_expect_multiple_in_order _ =
+  let file = parse_ok "# @expect status 200\n# @expect body id exists\nGET https://x/\n" in
+  match file.requests with
+  | [ r ] ->
+    assert_equal
+      [ Freight.Ast.Expect_status 200
+      ; Freight.Ast.Expect_body { body_path = "id"; body_op = Freight.Ast.Op_exists; body_value = None } ]
+      r.Freight.Ast.assertions
+  | _ -> assert_failure "one request"
+
+let test_parse_expect_malformed _ =
+  let e = parse_error "# @expect bogus thing\nGET https://x/\n" in
+  assert_equal 1 e.Freight.Ast.line
+
 (* Two requests separated by ###, with a leading comment block and a trailing
    comment-only block. Line indices (0-based) for request_at_cursor:
      0: # first
@@ -1337,6 +1385,12 @@ let suite =
          "parse error reports request line in second block"
          >:: test_parse_error_reports_request_line_in_second_block;
          "parse_body_file" >:: test_parse_body_file;
+         "parse_expect_status" >:: test_parse_expect_status;
+         "parse_expect_header" >:: test_parse_expect_header;
+         "parse_expect_body_exists" >:: test_parse_expect_body_exists;
+         "parse_expect_body_eq" >:: test_parse_expect_body_eq;
+         "parse_expect_multiple_in_order" >:: test_parse_expect_multiple_in_order;
+         "parse_expect_malformed" >:: test_parse_expect_malformed;
          "request_at_cursor_on_request_line" >:: test_request_at_cursor_on_request_line;
          "request_at_cursor_on_header_line" >:: test_request_at_cursor_on_header_line;
          "request_at_cursor_second_request" >:: test_request_at_cursor_second_request;

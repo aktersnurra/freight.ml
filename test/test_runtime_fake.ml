@@ -14,6 +14,7 @@ type call =
   | Fork of string
   | Nvim_call of string * Msgpck.t list
   | File_exists of string
+  | File_size of string
   | Write_file of { path : string; data : string }
 
 type config =
@@ -29,6 +30,7 @@ type config =
   ; nvim_eval_sequence : (string * Msgpck.t list) list
   ; fork_mode : [ `Run_immediately | `Capture_only ]
   ; existing_files : string list
+  ; file_sizes : (string * int) list
   ; write_file_result : (int, string) result
   }
 
@@ -45,6 +47,7 @@ let default_config =
   ; nvim_eval_sequence = []
   ; fork_mode = `Run_immediately
   ; existing_files = []
+  ; file_sizes = []
   ; write_file_result = Ok 0
   }
 
@@ -120,6 +123,10 @@ let rec run config f =
               Some (fun (k : (a, _) Effect.Deep.continuation) ->
                 log (File_exists path);
                 Effect.Deep.continue k (List.mem path config.existing_files))
+            | Freight_effect.File_size path ->
+              Some (fun (k : (a, _) Effect.Deep.continuation) ->
+                log (File_size path);
+                Effect.Deep.continue k (List.assoc_opt path config.file_sizes))
             | Freight_effect.Write_file { path; data } ->
               Some (fun (k : (a, _) Effect.Deep.continuation) ->
                 log (Write_file { path; data });

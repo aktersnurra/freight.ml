@@ -341,6 +341,7 @@ let test_freight_run_save_overwrite_writes _ =
     ; buffer_dir = Some "/tmp/work"
     ; cursor = { Freight_effect.Cursor.row = 0; col = 0 }
     ; existing_files = [ "/tmp/work/./out.bin" ]
+    ; file_sizes = [ ("/tmp/work/./out.bin", 5926) ]
     ; curl_result = Ok curl_output
     ; curl_verbose_result = Ok ""
     ; fork_mode = `Run_immediately
@@ -359,8 +360,10 @@ let test_freight_run_save_overwrite_writes _ =
           && List.mem "/tmp/work/./out.bin" invocation.Freight.Executor.args
         | _ -> false)
        calls);
-  assert_bool "reports saved"
-    (shows_or_updates_line "Saved 0 bytes to /tmp/work/./out.bin" calls)
+  (* The -o body lands on disk, so the byte count comes from the file, not the
+     (empty) parsed response body. *)
+  assert_bool "reports the file's real byte count"
+    (shows_or_updates_line "Saved 5926 bytes to /tmp/work/./out.bin" calls)
 
 let test_freight_run_save_derives_filename _ =
   let curl_output =

@@ -41,6 +41,7 @@ type _ Effect.t +=
   | Load_env : { dir : string; active_env : string option } -> Freight.Env.t Effect.t
   | Nvim_call : string * Msgpck.t list -> Msgpck.t Effect.t
   | File_exists : string -> bool Effect.t
+  | File_size : string -> int option Effect.t
   | Write_file : { path : string; data : string } -> (int, string) result Effect.t
 
 val current_buffer : unit -> buffer_id
@@ -58,5 +59,8 @@ val notify : notify_level -> string -> unit
 val fork : string -> (unit -> unit) -> unit
 val nvim_call : string -> Msgpck.t list -> Msgpck.t
 val file_exists : string -> bool
+val file_size : string -> int option
+(** Byte length of the file at the path, or [None] if it does not exist. *)
+
 val write_file : path:string -> data:string -> (int, string) result
 (** Writes [data] to [path], returning the number of bytes written. *)

@@ -43,6 +43,7 @@ type _ Effect.t +=
   | Load_env : { dir : string; active_env : string option } -> Freight.Env.t Effect.t
   | Nvim_call : string * Msgpck.t list -> Msgpck.t Effect.t
   | File_exists : string -> bool Effect.t
+  | File_size : string -> int option Effect.t
   | Write_file : { path : string; data : string } -> (int, string) result Effect.t
 
 let current_buffer () = Effect.perform Current_buffer
@@ -69,4 +70,5 @@ let notify level msg = Effect.perform (Notify (level, msg))
 let fork label f = Effect.perform (Fork (label, f))
 let nvim_call method_ params = Effect.perform (Nvim_call (method_, params))
 let file_exists path = Effect.perform (File_exists path)
+let file_size path = Effect.perform (File_size path)
 let write_file ~path ~data = Effect.perform (Write_file { path; data })

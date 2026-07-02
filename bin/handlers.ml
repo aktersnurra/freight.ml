@@ -247,8 +247,14 @@ let report_saved ~dir ~name loading_buf save response render_lines =
   in
   match save.Freight.Ast.save_path with
   | Some path ->
+    (* curl streamed the body to disk with -o, so the parsed response body is
+       empty; report the actual file size instead. *)
     let path = resolve_save_path ~dir path in
-    saved path (String.length response.Freight.Ast.body)
+    (match Freight_effect.file_size path with
+     | Some bytes -> saved path bytes
+     | None ->
+       Freight_effect.update_scratch loading_buf ~name ~filetype:"freight"
+         ~lines:(render_lines @ [ ""; "Saved to " ^ path ]))
   | None ->
     (match content_disposition_filename response with
      | None ->

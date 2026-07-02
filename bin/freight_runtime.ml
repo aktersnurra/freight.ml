@@ -136,6 +136,13 @@ let rec run : type a. proc_mgr:_ -> sw:_ -> rpc:_ -> (unit -> a) -> a =
           | Freight_effect.File_exists path ->
             Some (fun (k : (a, _) Effect.Deep.continuation) ->
               Effect.Deep.continue k (Sys.file_exists path))
+          | Freight_effect.File_size path ->
+            Some (fun (k : (a, _) Effect.Deep.continuation) ->
+              let size =
+                try Some (In_channel.with_open_bin path In_channel.length |> Int64.to_int)
+                with Sys_error _ -> None
+              in
+              Effect.Deep.continue k size)
           | Freight_effect.Write_file { path; data } ->
             Some (fun (k : (a, _) Effect.Deep.continuation) ->
               let result =

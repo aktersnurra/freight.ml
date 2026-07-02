@@ -27,12 +27,18 @@ type body =
   | Body_multipart of multipart_part list
   | Body_none
 
+type save = {
+  save_path : string option;  (** [None] derives the name from Content-Disposition. *)
+  overwrite : bool;  (** [>>!] overwrites; [>>] refuses to clobber. *)
+}
+
 type request = {
   name : string option;
   method_ : method_;
   url : string;
   headers : (string * string) list;
   body : body;
+  save_to : save option;
 }
 
 type response = {
@@ -63,6 +69,7 @@ type validation_error =
 
 val make_request :
   ?name:string ->
+  ?save_to:save ->
   method_:method_ ->
   url:string ->
   headers:(string * string) list ->

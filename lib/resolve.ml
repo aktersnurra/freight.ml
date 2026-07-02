@@ -24,10 +24,17 @@ let substitute_request env (request : Ast.request) =
     | Ast.Body_multipart parts -> Ast.Body_multipart (List.map sub_part parts)
     | Ast.Body_none as other -> other
   in
+  let save_to =
+    Option.map
+      (fun (save : Ast.save) ->
+        { save with Ast.save_path = Option.map sub save.save_path })
+      request.save_to
+  in
   { request with
     url = sub request.url
   ; headers = List.map (fun (k, v) -> (k, sub v)) request.headers
   ; body
+  ; save_to
   }
 
 let part_strings (part : Ast.multipart_part) =

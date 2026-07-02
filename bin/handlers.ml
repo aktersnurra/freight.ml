@@ -206,8 +206,68 @@ let render_run_all_results ?progress results =
   in
   [ header ] @ failed_section @ success_section
 
+(* Save targets resolve relative to the .http file's directory, mirroring how
+   [< file] body includes are read. *)
+let resolve_save_path ~dir path =
+  if Filename.is_relative path then
+    match dir with Some dir -> Filename.concat dir path | None -> path
+  else path
+
+(* Pull the filename from a Content-Disposition: attachment; filename="..."
+   header, used when [>>] is given without an explicit path. *)
+let content_disposition_filename response =
+  response.Freight.Ast.headers
+  |> List.find_map (fun (name, value) ->
+       if String.lowercase_ascii name = "content-disposition" then
+         value
+         |> String.split_on_char ';'
+         |> List.find_map (fun param ->
+              match String.index_opt param '=' with
+              | Some index
+                when String.lowercase_ascii (String.trim (String.sub param 0 index)) = "filename" ->
+                let raw =
+                  String.sub param (index + 1) (String.length param - index - 1)
+                  |> String.trim
+                in
+                let length = String.length raw in
+                Some
+                  (if length >= 2 && raw.[0] = '"' && raw.[length - 1] = '"' then
+                     String.sub raw 1 (length - 2)
+                   else raw)
+              | _ -> None)
+       else None)
+
+(* After a saved request completes, report where the body landed. For an
+   explicit path curl already streamed the bytes to disk (-o); for a derived
+   path we write the parsed body ourselves. *)
+let report_saved ~dir ~name loading_buf save response render_lines =
+  let saved path bytes =
+    Freight_effect.update_scratch loading_buf ~name ~filetype:"freight"
+      ~lines:(render_lines @ [ ""; Printf.sprintf "Saved %d bytes to %s" bytes path ])
+  in
+  match save.Freight.Ast.save_path with
+  | Some path ->
+    let path = resolve_save_path ~dir path in
+    saved path (String.length response.Freight.Ast.body)
+  | None ->
+    (match content_disposition_filename response with
+     | None ->
+       Freight_effect.update_scratch loading_buf ~name ~filetype:"freight"
+         ~lines:(render_lines
+                 @ [ ""
+                   ; "Could not save: no path given and no Content-Disposition filename."
+                   ])
+     | Some filename ->
+       let path = resolve_save_path ~dir filename in
+       (match Freight_effect.write_file ~path ~data:response.Freight.Ast.body with
+        | Ok bytes -> saved path bytes
+        | Error message ->
+          Freight_effect.update_scratch loading_buf ~name ~filetype:"freight"
+            ~lines:(render_lines @ [ ""; "Could not save: " ^ message ])))
+
 let freight_run state =
   let buf, source, cursor_line = current_source () in
+  let dir = Freight_effect.buffer_dir buf in
   match resolve_request state source cursor_line buf with
   | Error (`Parse err) ->
     let scratch_buf =
@@ -225,39 +285,65 @@ let freight_run state =
     in
     show_error_state state (unresolved_message unresolved)
   | Ok request ->
-    let invocation = Freight.Executor.to_curl request in
-    let name = Freight.Buffer.buffer_name request in
-    let loading_buf =
-      show_or_update state
-        ~name
-        ~filetype:"freight"
-        ~lines:[ "Running request…" ]
+    (* Resolve a save target's path against the .http file's directory so both
+       the no-clobber check and curl's [-o] point at the right file. *)
+    let request =
+      match request.Freight.Ast.save_to with
+      | Some ({ save_path = Some path; _ } as save) ->
+        { request with save_to = Some { save with save_path = Some (resolve_save_path ~dir path) } }
+      | _ -> request
     in
-    set_buf_keymaps loading_buf;
-    Freight_effect.fork "FreightRun" @@ fun () ->
-      let run_result = Freight_effect.run_curl invocation in
-      let verbose_result = Freight_effect.run_curl_verbose invocation in
-      (match run_result, verbose_result with
-       | Error msg, _ | _, Error msg ->
-         Freight_effect.update_scratch loading_buf
-           ~name ~filetype:"freight"
-           ~lines:[ "Request failed"; msg ]
-       | Ok raw, Ok verbose_raw ->
-         (match Freight.Response.parse_curl_output raw request with
-          | Error msg ->
-            Freight_effect.update_scratch loading_buf
-              ~name ~filetype:"freight"
-              ~lines:[ "Response parse failed"; msg ]
-          | Ok response ->
-            let filetype =
-              Freight.Buffer.filetype_of_content_type
-                (Freight.Response.detect_content_type response)
-            in
-            record_response state request response verbose_raw loading_buf name;
-            Freight_effect.update_scratch loading_buf
-              ~name ~filetype
-              ~lines:(Freight.Response.render response);
-            set_response_keymaps loading_buf))
+    let clobbers =
+      match request.Freight.Ast.save_to with
+      | Some { save_path = Some path; overwrite = false } -> Freight_effect.file_exists path
+      | _ -> false
+    in
+    if clobbers then
+      let path =
+        match request.Freight.Ast.save_to with
+        | Some { save_path = Some path; _ } -> path
+        | _ -> ""
+      in
+      show_error_state state
+        (Printf.sprintf "%s already exists — use >>! to overwrite." path)
+    else
+      let invocation = Freight.Executor.to_curl request in
+      let name = Freight.Buffer.buffer_name request in
+      let loading_buf =
+        show_or_update state
+          ~name
+          ~filetype:"freight"
+          ~lines:[ "Running request…" ]
+      in
+      set_buf_keymaps loading_buf;
+      Freight_effect.fork "FreightRun" @@ fun () ->
+        let run_result = Freight_effect.run_curl invocation in
+        let verbose_result = Freight_effect.run_curl_verbose invocation in
+        (match run_result, verbose_result with
+         | Error msg, _ | _, Error msg ->
+           Freight_effect.update_scratch loading_buf
+             ~name ~filetype:"freight"
+             ~lines:[ "Request failed"; msg ]
+         | Ok raw, Ok verbose_raw ->
+           (match Freight.Response.parse_curl_output raw request with
+            | Error msg ->
+              Freight_effect.update_scratch loading_buf
+                ~name ~filetype:"freight"
+                ~lines:[ "Response parse failed"; msg ]
+            | Ok response ->
+              let filetype =
+                Freight.Buffer.filetype_of_content_type
+                  (Freight.Response.detect_content_type response)
+              in
+              record_response state request response verbose_raw loading_buf name;
+              let render_lines = Freight.Response.render response in
+              Freight_effect.update_scratch loading_buf
+                ~name ~filetype
+                ~lines:render_lines;
+              set_response_keymaps loading_buf;
+              (match request.Freight.Ast.save_to with
+               | Some save -> report_saved ~dir ~name loading_buf save response render_lines
+               | None -> ())))
 
 let freight_run_all state =
   let buf, source, _cursor_line = current_source () in

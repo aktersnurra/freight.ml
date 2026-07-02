@@ -133,5 +133,20 @@ let rec run : type a. proc_mgr:_ -> sw:_ -> rpc:_ -> (unit -> a) -> a =
             Some (fun (k : (a, _) Effect.Deep.continuation) ->
               let result = call method_ params in
               Effect.Deep.continue k result)
+          | Freight_effect.File_exists path ->
+            Some (fun (k : (a, _) Effect.Deep.continuation) ->
+              Effect.Deep.continue k (Sys.file_exists path))
+          | Freight_effect.Write_file { path; data } ->
+            Some (fun (k : (a, _) Effect.Deep.continuation) ->
+              let result =
+                try
+                  let channel = open_out_bin path in
+                  Fun.protect
+                    ~finally:(fun () -> close_out_noerr channel)
+                    (fun () -> output_string channel data);
+                  Ok (String.length data)
+                with Sys_error message -> Error message
+              in
+              Effect.Deep.continue k result)
           | _ -> None)
     }

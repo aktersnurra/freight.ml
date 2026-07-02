@@ -160,6 +160,26 @@ hello from freight
 --boundary--
 ```
 
+### Saving responses
+
+Trail a request with a redirect to write the response body to a file — handy
+for binary downloads that would otherwise be mangled by the text renderer:
+
+```http
+# @name template
+GET {{BASE_URL}}/imports/template
+
+>> ./price-change-template.xlsx
+```
+
+- `>> path` writes the body, refusing to overwrite an existing file
+- `>>! path` writes the body, overwriting
+- `>>` with no path derives the filename from `Content-Disposition`
+- paths resolve relative to the `.http` file's directory
+
+The response buffer shows the status and headers plus a `Saved N bytes to …`
+line; the bytes stream straight to disk via curl, so the file is byte-valid.
+
 ## Environment files
 
 freight.ml walks up from the `.http` file's directory and merges, in order:

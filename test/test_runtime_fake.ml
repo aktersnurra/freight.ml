@@ -13,6 +13,8 @@ type call =
   | Notify of Freight_effect.notify_level * string
   | Fork of string
   | Nvim_call of string * Msgpck.t list
+  | File_exists of string
+  | Write_file of { path : string; data : string }
 
 type config =
   { current_buffer : Freight_effect.buffer_id
@@ -26,6 +28,8 @@ type config =
   ; nvim_eval_results : (string * Msgpck.t) list
   ; nvim_eval_sequence : (string * Msgpck.t list) list
   ; fork_mode : [ `Run_immediately | `Capture_only ]
+  ; existing_files : string list
+  ; write_file_result : (int, string) result
   }
 
 let default_config =
@@ -40,6 +44,8 @@ let default_config =
   ; nvim_eval_results = []
   ; nvim_eval_sequence = []
   ; fork_mode = `Run_immediately
+  ; existing_files = []
+  ; write_file_result = Ok 0
   }
 
 let rec run config f =
@@ -110,6 +116,19 @@ let rec run config f =
                    calls := List.rev_append child_calls !calls
                  | `Capture_only -> ());
                 Effect.Deep.continue k ())
+            | Freight_effect.File_exists path ->
+              Some (fun (k : (a, _) Effect.Deep.continuation) ->
+                log (File_exists path);
+                Effect.Deep.continue k (List.mem path config.existing_files))
+            | Freight_effect.Write_file { path; data } ->
+              Some (fun (k : (a, _) Effect.Deep.continuation) ->
+                log (Write_file { path; data });
+                let result =
+                  match config.write_file_result with
+                  | Ok _ -> Ok (String.length data)
+                  | Error _ as error -> error
+                in
+                Effect.Deep.continue k result)
             | Freight_effect.Nvim_call (method_, params) ->
               Some (fun (k : (a, _) Effect.Deep.continuation) ->
                 log (Nvim_call (method_, params));

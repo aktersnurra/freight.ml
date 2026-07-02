@@ -30,6 +30,7 @@ let test_make_response_rejects_invalid_status _ =
       url = "https://example.test";
       headers = [];
       body = Freight.Ast.Body_none;
+      save_to = None;
     }
   in
   match
@@ -54,6 +55,7 @@ let test_make_response_rejects_negative_duration _ =
       url = "https://example.test";
       headers = [];
       body = Freight.Ast.Body_none;
+      save_to = None;
     }
   in
   match
@@ -83,6 +85,7 @@ let test_make_response_rejects_invalid_request_url _ =
       url = "";
       headers = [];
       body = Freight.Ast.Body_none;
+      save_to = None;
     }
   in
   assert_empty_url
@@ -126,6 +129,7 @@ let test_make_response_rejects_empty_header_name _ =
       url = "https://example.test";
       headers = [];
       body = Freight.Ast.Body_none;
+      save_to = None;
     }
   in
   assert_empty_header_name
@@ -166,6 +170,7 @@ let test_make_response_rejects_invalid_request_header_name _ =
          url = "https://example.test";
          headers = [ ("", "value") ];
          body = Freight.Ast.Body_none;
+         save_to = None;
        });
   assert_empty_header_name
     (make_response
@@ -175,6 +180,7 @@ let test_make_response_rejects_invalid_request_header_name _ =
          url = "https://example.test";
          headers = [ (" \t", "value") ];
          body = Freight.Ast.Body_none;
+         save_to = None;
        })
 
 let test_make_request_preserves_fields _ =
@@ -204,6 +210,7 @@ let test_make_response_preserves_fields _ =
       url = "https://example.test/users";
       headers = [ ("Accept", "application/json") ];
       body = Freight.Ast.Body_none;
+      save_to = None;
     }
   in
   let headers = [ ("Content-Type", "application/json"); ("X-Trace", "abc") ] in
@@ -334,6 +341,86 @@ let test_request_at_cursor_trailing_comment_is_none _ =
   (* line 9 is a comment-only block after the last request *)
   assert_equal None (Freight.Parser.request_at_cursor cursor_source 9)
 
+let test_parse_save_redirect _ =
+  let file =
+    parse_ok "GET https://example.com/template\n\n>> ./out.xlsx\n"
+  in
+  match file.requests with
+  | [ request ] ->
+      assert_equal
+        (Some { Freight.Ast.save_path = Some "./out.xlsx"; overwrite = false })
+        request.Freight.Ast.save_to;
+      assert_equal Freight.Ast.Body_none request.body
+  | _ -> assert_failure "expected one request"
+
+let test_parse_save_redirect_overwrite _ =
+  let file = parse_ok "GET https://example.com/template\n\n>>! ./out.xlsx\n" in
+  match file.requests with
+  | [ request ] ->
+      assert_equal
+        (Some { Freight.Ast.save_path = Some "./out.xlsx"; overwrite = true })
+        request.Freight.Ast.save_to
+  | _ -> assert_failure "expected one request"
+
+let test_parse_save_redirect_no_path _ =
+  let file = parse_ok "GET https://example.com/template\n\n>>\n" in
+  match file.requests with
+  | [ request ] ->
+      assert_equal
+        (Some { Freight.Ast.save_path = None; overwrite = false })
+        request.Freight.Ast.save_to
+  | _ -> assert_failure "expected one request"
+
+let test_parse_save_redirect_with_body _ =
+  let file =
+    parse_ok
+      "POST https://example.com/x\nContent-Type: application/json\n\n{\"x\":1}\n\n>> ./out.json\n"
+  in
+  match file.requests with
+  | [ request ] ->
+      assert_equal (Freight.Ast.Body_inline "{\"x\":1}") request.body;
+      assert_equal
+        (Some { Freight.Ast.save_path = Some "./out.json"; overwrite = false })
+        request.Freight.Ast.save_to
+  | _ -> assert_failure "expected one request"
+
+let test_to_curl_save_uses_o_and_dump _ =
+  let file = parse_ok "GET https://example.com/template\n\n>> ./out.xlsx\n" in
+  match file.requests with
+  | [ request ] ->
+      let invocation = Freight.Executor.to_curl request in
+      assert_bool "dumps headers to stdout"
+        (List.mem "-D" invocation.args && List.mem "-" invocation.args);
+      assert_bool "writes body to file with -o"
+        (List.mem "-o" invocation.args && List.mem "./out.xlsx" invocation.args);
+      assert_bool "does not use -i" (not (List.mem "-i" invocation.args))
+  | _ -> assert_failure "expected one request"
+
+let test_to_curl_no_save_uses_i _ =
+  let file = parse_ok "GET https://example.com/template\n" in
+  match file.requests with
+  | [ request ] ->
+      let invocation = Freight.Executor.to_curl request in
+      assert_bool "uses -i" (List.mem "-i" invocation.args);
+      assert_bool "no -o" (not (List.mem "-o" invocation.args))
+  | _ -> assert_failure "expected one request"
+
+let test_substitute_request_expands_save_path _ =
+  let env = Freight.Env.of_list [ ("OUT", "/tmp/out") ] in
+  let request =
+    { Freight.Ast.name = None
+    ; method_ = Freight.Ast.Get
+    ; url = "https://example.com"
+    ; headers = []
+    ; body = Freight.Ast.Body_none
+    ; save_to = Some { Freight.Ast.save_path = Some "{{OUT}}/file.bin"; overwrite = true }
+    }
+  in
+  let resolved = Freight.Resolve.substitute_request env request in
+  assert_equal
+    (Some { Freight.Ast.save_path = Some "/tmp/out/file.bin"; overwrite = true })
+    resolved.save_to
+
 let multipart_source =
   String.concat "\n"
     [ "# @name upload"
@@ -411,6 +498,7 @@ let test_substitute_request_expands_multipart _ =
             ; content = Freight.Ast.Part_text "{{NOTE}}"
             }
           ]
+    ; save_to = None
     }
   in
   match (Freight.Resolve.substitute_request env request).body with
@@ -435,6 +523,7 @@ let test_unresolved_request_reports_missing _ =
     ; url = "{{host}}/imports/{{preview.response.body.id}}/apply"
     ; headers = [ ("X-Api-Key", "{{API_KEY}}") ]
     ; body = Freight.Ast.Body_inline "{ \"hash\": \"{{preview.response.body.hash}}\" }"
+    ; save_to = None
     }
   in
   assert_equal
@@ -449,6 +538,7 @@ let test_unresolved_request_empty_when_resolved _ =
     ; url = "{{host}}/ping"
     ; headers = []
     ; body = Freight.Ast.Body_none
+    ; save_to = None
     }
   in
   assert_equal [] (Freight.Resolve.unresolved_request env request)
@@ -461,6 +551,7 @@ let test_substitute_request_expands_body_file_path _ =
     ; url = "https://api.example.com/upload"
     ; headers = []
     ; body = Freight.Ast.Body_file "{{DIR}}/payload.json"
+    ; save_to = None
     }
   in
   let resolved = Freight.Resolve.substitute_request env request in
@@ -555,6 +646,7 @@ let sample_request body =
     url = "https://api.example.com/auth";
     headers = [ ("Content-Type", "application/json") ];
     body;
+    save_to = None;
   }
 
 let test_to_curl_inline_body _ =
@@ -582,6 +674,7 @@ let test_to_curl_put_file_body _ =
       url = "https://api.example.com/upload";
       headers = [];
       body = Freight.Ast.Body_file "payload.json";
+      save_to = None;
     }
   in
   let invocation = Freight.Executor.to_curl request in
@@ -597,6 +690,7 @@ let test_to_curl_applies_host_header _ =
       headers =
         [ ("Host", "https://httpbin.org/"); ("Content-Type", "application/json") ];
       body = Freight.Ast.Body_inline "{\"message\": \"hello from freight\"}";
+      save_to = None;
     }
   in
   let invocation = Freight.Executor.to_curl request in
@@ -635,6 +729,7 @@ let response_request =
     url = "https://api.example.com";
     headers = [];
     body = Freight.Ast.Body_none;
+    save_to = None;
   }
 
 let test_parse_curl_output _ =
@@ -744,6 +839,7 @@ let test_render_body _ =
     url = "https://httpbin.org/get";
     headers = [];
     body = Freight.Ast.Body_none;
+    save_to = None;
   } in
   let response = {
     Freight.Ast.status = 200;
@@ -775,6 +871,7 @@ let test_render_headers _ =
     url = "https://httpbin.org/get";
     headers = [];
     body = Freight.Ast.Body_none;
+    save_to = None;
   } in
   let response = {
     Freight.Ast.status = 200;
@@ -802,6 +899,7 @@ let test_render_all _ =
     url = "https://httpbin.org/get";
     headers = [];
     body = Freight.Ast.Body_none;
+    save_to = None;
   } in
   let response = {
     Freight.Ast.status = 200;
@@ -876,6 +974,7 @@ let test_apply_host_header_relative_url _ =
     url = "/post";
     headers = [ ("Host", "https://httpbin.org"); ("Content-Type", "application/json") ];
     body = Freight.Ast.Body_none;
+    save_to = None;
   } in
   let result = Freight.Ast.apply_host_header request in
   assert_equal "https://httpbin.org/post" result.Freight.Ast.url;
@@ -888,6 +987,7 @@ let test_apply_host_header_trailing_slash _ =
     url = "/users";
     headers = [ ("Host", "https://api.example.com/") ];
     body = Freight.Ast.Body_none;
+    save_to = None;
   } in
   let result = Freight.Ast.apply_host_header request in
   assert_equal "https://api.example.com/users" result.Freight.Ast.url;
@@ -900,6 +1000,7 @@ let test_apply_host_header_absolute_url_unchanged _ =
     url = "https://httpbin.org/get";
     headers = [ ("Host", "https://other.example.com") ];
     body = Freight.Ast.Body_none;
+    save_to = None;
   } in
   let result = Freight.Ast.apply_host_header request in
   assert_equal "https://httpbin.org/get" result.Freight.Ast.url;
@@ -912,6 +1013,7 @@ let test_apply_host_header_no_host_unchanged _ =
     url = "/users";
     headers = [ ("Content-Type", "application/json") ];
     body = Freight.Ast.Body_none;
+    save_to = None;
   } in
   let result = Freight.Ast.apply_host_header request in
   assert_equal "/users" result.Freight.Ast.url;
@@ -924,6 +1026,7 @@ let test_apply_host_header_case_insensitive _ =
     url = "/ping";
     headers = [ ("HOST", "https://api.example.com") ];
     body = Freight.Ast.Body_none;
+    save_to = None;
   } in
   let result = Freight.Ast.apply_host_header request in
   assert_equal "https://api.example.com/ping" result.Freight.Ast.url;
@@ -969,6 +1072,13 @@ let suite =
          >:: test_request_at_cursor_blank_gap_is_none;
          "request_at_cursor_trailing_comment_is_none"
          >:: test_request_at_cursor_trailing_comment_is_none;
+         "parse_save_redirect" >:: test_parse_save_redirect;
+         "parse_save_redirect_overwrite" >:: test_parse_save_redirect_overwrite;
+         "parse_save_redirect_no_path" >:: test_parse_save_redirect_no_path;
+         "parse_save_redirect_with_body" >:: test_parse_save_redirect_with_body;
+         "to_curl_save_uses_o_and_dump" >:: test_to_curl_save_uses_o_and_dump;
+         "to_curl_no_save_uses_i" >:: test_to_curl_no_save_uses_i;
+         "substitute_request_expands_save_path" >:: test_substitute_request_expands_save_path;
          "parse_multipart_body" >:: test_parse_multipart_body;
          "to_curl_multipart" >:: test_to_curl_multipart;
          "substitute_request_expands_multipart" >:: test_substitute_request_expands_multipart;

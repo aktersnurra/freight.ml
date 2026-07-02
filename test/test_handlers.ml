@@ -298,6 +298,105 @@ let test_freight_run_chaining_survives_across_runs _ =
         | _ -> false)
        calls)
 
+let shows_or_updates_line line calls =
+  has_call
+    (function
+     | Test_runtime_fake.Show_scratch v -> List.mem line v.lines
+     | Test_runtime_fake.Update_scratch (_, v) -> List.mem line v.lines
+     | _ -> false)
+    calls
+
+let test_freight_run_save_refuses_clobber _ =
+  let config =
+    { Test_runtime_fake.default_config with
+      buffer_lines =
+        [ "GET https://example.com/template"; ""; ">> ./out.bin" ]
+    ; buffer_dir = Some "/tmp/work"
+    ; cursor = { Freight_effect.Cursor.row = 0; col = 0 }
+    ; existing_files = [ "/tmp/work/./out.bin" ]
+    ; fork_mode = `Run_immediately
+    }
+  in
+  let (), calls =
+    Test_runtime_fake.run config @@ fun () ->
+      Handlers.freight_run (State.create ())
+  in
+  assert_bool "does not run curl" (not (has_run_curl calls));
+  assert_bool "reports the clobber refusal"
+    (shows_or_updates_line
+       "/tmp/work/./out.bin already exists — use >>! to overwrite." calls)
+
+let test_freight_run_save_overwrite_writes _ =
+  let curl_output =
+    "HTTP/1.1 200 OK\r\n\
+     Content-Type: application/octet-stream\r\n\
+     \r\n\
+     200\n\
+     0.010"
+  in
+  let config =
+    { Test_runtime_fake.default_config with
+      buffer_lines =
+        [ "GET https://example.com/template"; ""; ">>! ./out.bin" ]
+    ; buffer_dir = Some "/tmp/work"
+    ; cursor = { Freight_effect.Cursor.row = 0; col = 0 }
+    ; existing_files = [ "/tmp/work/./out.bin" ]
+    ; curl_result = Ok curl_output
+    ; curl_verbose_result = Ok ""
+    ; fork_mode = `Run_immediately
+    }
+  in
+  let (), calls =
+    Test_runtime_fake.run config @@ fun () ->
+      Handlers.freight_run (State.create ())
+  in
+  assert_bool "runs curl (overwrite allowed)" (has_run_curl calls);
+  assert_bool "curl invocation targets the resolved -o path"
+    (has_call
+       (function
+        | Test_runtime_fake.Run_curl invocation ->
+          List.mem "-o" invocation.Freight.Executor.args
+          && List.mem "/tmp/work/./out.bin" invocation.Freight.Executor.args
+        | _ -> false)
+       calls);
+  assert_bool "reports saved"
+    (shows_or_updates_line "Saved 0 bytes to /tmp/work/./out.bin" calls)
+
+let test_freight_run_save_derives_filename _ =
+  let curl_output =
+    "HTTP/1.1 200 OK\r\n\
+     Content-Type: text/plain\r\n\
+     Content-Disposition: attachment; filename=\"report.txt\"\r\n\
+     \r\n\
+     hello world\n\
+     200\n\
+     0.010"
+  in
+  let config =
+    { Test_runtime_fake.default_config with
+      buffer_lines = [ "GET https://example.com/report"; ""; ">>" ]
+    ; buffer_dir = Some "/tmp/work"
+    ; cursor = { Freight_effect.Cursor.row = 0; col = 0 }
+    ; curl_result = Ok curl_output
+    ; curl_verbose_result = Ok ""
+    ; write_file_result = Ok 0
+    ; fork_mode = `Run_immediately
+    }
+  in
+  let (), calls =
+    Test_runtime_fake.run config @@ fun () ->
+      Handlers.freight_run (State.create ())
+  in
+  assert_bool "writes the derived file"
+    (has_call
+       (function
+        | Test_runtime_fake.Write_file { path; data } ->
+          path = "/tmp/work/report.txt" && data = "hello world"
+        | _ -> false)
+       calls);
+  assert_bool "reports saved with derived name"
+    (shows_or_updates_line "Saved 11 bytes to /tmp/work/report.txt" calls)
+
 let test_freight_run_all_runs_every_request _ =
   let curl_output =
     "HTTP/1.1 200 OK\r\n\
@@ -409,6 +508,7 @@ let test_freight_run_all_http_failure_opens_response_detail _ =
     ; url = "https://example.com/post"
     ; headers = []
     ; body = Freight.Ast.Body_none
+    ; save_to = None
     }
   in
   let response =
@@ -455,6 +555,7 @@ let test_freight_view_run_all_success _ =
     ; url = "https://example.com/ok"
     ; headers = []
     ; body = Freight.Ast.Body_none
+    ; save_to = None
     }
   in
   let response =
@@ -503,6 +604,7 @@ let test_freight_view_run_all_verbose_unavailable _ =
     ; url = "https://example.com/ok"
     ; headers = []
     ; body = Freight.Ast.Body_none
+    ; save_to = None
     }
   in
   let response =
@@ -543,6 +645,7 @@ let test_freight_view_run_all_failure _ =
     ; url = "https://example.com/fail"
     ; headers = []
     ; body = Freight.Ast.Body_none
+    ; save_to = None
     }
   in
   let state = State.create () in
@@ -604,6 +707,7 @@ let test_freight_jump_run_all _ =
     ; url = "https://example.com/ok"
     ; headers = []
     ; body = Freight.Ast.Body_none
+    ; save_to = None
     }
   in
   let response =
@@ -647,6 +751,7 @@ let test_freight_jump_run_all_uses_win_findbuf _ =
     ; url = "https://example.com/ok"
     ; headers = []
     ; body = Freight.Ast.Body_none
+    ; save_to = None
     }
   in
   let response =
@@ -688,6 +793,7 @@ let test_freight_jump_run_all_skips_invalid_source_window _ =
     ; url = "https://example.com/ok"
     ; headers = []
     ; body = Freight.Ast.Body_none
+    ; save_to = None
     }
   in
   let response =
@@ -775,6 +881,7 @@ let test_freight_view_body _ =
         ; url = "https://example.com"
         ; headers = []
         ; body = Freight.Ast.Body_none
+        ; save_to = None
         }
     };
   state.State.response_buf <- Some 42;
@@ -800,6 +907,7 @@ let test_freight_view_headers _ =
         ; url = "https://example.com"
         ; headers = []
         ; body = Freight.Ast.Body_none
+        ; save_to = None
         }
     };
   state.State.response_buf <- Some 42;
@@ -825,6 +933,7 @@ let test_freight_view_all _ =
         ; url = "https://example.com"
         ; headers = []
         ; body = Freight.Ast.Body_none
+        ; save_to = None
         }
     };
   state.State.response_buf <- Some 42;
@@ -841,7 +950,7 @@ let test_freight_view_all _ =
 let test_push_history _ =
   let state = State.create () in
   let req = { Freight.Ast.name = Some "r1"; method_ = Get;
-               url = "https://example.com"; headers = []; body = Body_none } in
+               url = "https://example.com"; headers = []; body = Body_none; save_to = None } in
   let resp = { Freight.Ast.status = 200; status_text = "OK";
                headers = []; body = ""; duration_ms = 1; request = req } in
   State.push_history state req resp "verbose";
@@ -854,7 +963,7 @@ let test_push_history _ =
 let test_push_history_cap _ =
   let state = State.create () in
   let req = { Freight.Ast.name = None; method_ = Get;
-               url = "https://example.com"; headers = []; body = Body_none } in
+               url = "https://example.com"; headers = []; body = Body_none; save_to = None } in
   let resp = { Freight.Ast.status = 200; status_text = "OK";
                headers = []; body = ""; duration_ms = 1; request = req } in
   for i = 1 to 55 do
@@ -894,7 +1003,7 @@ let test_freight_history_empty _ =
 let test_freight_view_history _ =
   let state = State.create () in
   let req = { Freight.Ast.name = Some "r1"; method_ = Freight.Ast.Get;
-               url = "https://example.com"; headers = []; body = Freight.Ast.Body_none } in
+               url = "https://example.com"; headers = []; body = Freight.Ast.Body_none; save_to = None } in
   let resp = { Freight.Ast.status = 200; status_text = "OK";
                headers = []; body = "hello"; duration_ms = 1; request = req } in
   State.push_history state req resp "verbose";
@@ -918,6 +1027,9 @@ let suite =
     ; "freight_run success" >:: test_freight_run_success
     ; "freight_run unresolved var does not curl" >:: test_freight_run_unresolved_var_does_not_curl
     ; "freight_run chaining survives across runs" >:: test_freight_run_chaining_survives_across_runs
+    ; "freight_run save refuses clobber" >:: test_freight_run_save_refuses_clobber
+    ; "freight_run save overwrite writes" >:: test_freight_run_save_overwrite_writes
+    ; "freight_run save derives filename" >:: test_freight_run_save_derives_filename
     ; "freight_run_all runs every request" >:: test_freight_run_all_runs_every_request
     ; "freight_run_all groups results" >:: test_freight_run_all_groups_results
     ; "freight_run_all groups HTTP errors as failed" >:: test_freight_run_all_groups_http_errors_as_failed

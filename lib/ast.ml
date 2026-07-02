@@ -27,12 +27,18 @@ type body =
   | Body_multipart of multipart_part list
   | Body_none
 
+type save = {
+  save_path : string option;  (** [None] derives the name from Content-Disposition. *)
+  overwrite : bool;  (** [>>!] overwrites; [>>] refuses to clobber. *)
+}
+
 type request = {
   name : string option;
   method_ : method_;
   url : string;
   headers : (string * string) list;
   body : body;
+  save_to : save option;
 }
 
 type response = {
@@ -69,10 +75,10 @@ let validate_request_fields ~url ~headers =
   else if has_empty_header_name headers then Error Empty_header_name
   else Ok ()
 
-let make_request ?name ~method_ ~url ~headers ~body () =
+let make_request ?name ?save_to ~method_ ~url ~headers ~body () =
   match validate_request_fields ~url ~headers with
   | Error error -> Error error
-  | Ok () -> Ok { name; method_; url; headers; body }
+  | Ok () -> Ok { name; method_; url; headers; body; save_to }
 
 let make_response ~status ~status_text ~headers ~body ~duration_ms ~request () =
   if status < 100 || status > 599 then Error Invalid_status

@@ -47,6 +47,7 @@ let dummy_request : Ast.request =
     url = "http://example.com";
     headers = [];
     body = Ast.Body_none;
+    save_to = None;
   }
 
 (* ── A: Ast.method_ roundtrip ────────────────────────────────────────────── *)

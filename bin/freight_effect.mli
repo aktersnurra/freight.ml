@@ -40,6 +40,8 @@ type _ Effect.t +=
   | Fork : string * (unit -> unit) -> unit Effect.t
   | Load_env : { dir : string; active_env : string option } -> Freight.Env.t Effect.t
   | Nvim_call : string * Msgpck.t list -> Msgpck.t Effect.t
+  | File_exists : string -> bool Effect.t
+  | Write_file : { path : string; data : string } -> (int, string) result Effect.t
 
 val current_buffer : unit -> buffer_id
 val buffer_lines : buffer_id -> string list
@@ -55,3 +57,6 @@ val run_curl_verbose : Freight.Executor.invocation -> (string, string) result
 val notify : notify_level -> string -> unit
 val fork : string -> (unit -> unit) -> unit
 val nvim_call : string -> Msgpck.t list -> Msgpck.t
+val file_exists : string -> bool
+val write_file : path:string -> data:string -> (int, string) result
+(** Writes [data] to [path], returning the number of bytes written. *)

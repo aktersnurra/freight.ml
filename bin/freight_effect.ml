@@ -42,6 +42,8 @@ type _ Effect.t +=
   | Fork : string * (unit -> unit) -> unit Effect.t
   | Load_env : { dir : string; active_env : string option } -> Freight.Env.t Effect.t
   | Nvim_call : string * Msgpck.t list -> Msgpck.t Effect.t
+  | File_exists : string -> bool Effect.t
+  | Write_file : { path : string; data : string } -> (int, string) result Effect.t
 
 let current_buffer () = Effect.perform Current_buffer
 let buffer_lines buf = Effect.perform (Buffer_lines buf)
@@ -66,3 +68,5 @@ let run_curl_verbose invocation = Effect.perform (Run_curl_verbose invocation)
 let notify level msg = Effect.perform (Notify (level, msg))
 let fork label f = Effect.perform (Fork (label, f))
 let nvim_call method_ params = Effect.perform (Nvim_call (method_, params))
+let file_exists path = Effect.perform (File_exists path)
+let write_file ~path ~data = Effect.perform (Write_file { path; data })

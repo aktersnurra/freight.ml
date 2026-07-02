@@ -69,6 +69,30 @@ let rec drop_while p = function
   | x :: rest when p x -> drop_while p rest
   | xs -> xs
 
+(* A response redirect [>> path] / [>>! path] may trail the body block. Extract
+   it, returning the remaining body lines and the parsed save target. An empty
+   path means "derive the filename from Content-Disposition". *)
+let parse_save_line line =
+  let trimmed = trim line in
+  if starts_with ~prefix:">>!" trimmed then
+    let path = String.sub trimmed 3 (String.length trimmed - 3) |> trim in
+    Some { Ast.save_path = (if path = "" then None else Some path); overwrite = true }
+  else if starts_with ~prefix:">>" trimmed then
+    let path = String.sub trimmed 2 (String.length trimmed - 2) |> trim in
+    Some { Ast.save_path = (if path = "" then None else Some path); overwrite = false }
+  else None
+
+let extract_save lines =
+  let trimmed_tail =
+    lines |> List.rev |> drop_while (fun line -> trim line = "")
+  in
+  match trimmed_tail with
+  | last :: rest -> (
+      match parse_save_line last with
+      | Some save -> (List.rev rest, Some save)
+      | None -> (lines, None))
+  | [] -> (lines, None)
+
 let parse_body lines =
   let body_lines =
     lines
@@ -194,6 +218,7 @@ let parse_block ~start_line block =
             | Ok (method_, url) ->
                 let header_lines, body_lines = split_at_blank rest in
                 let headers = List.filter_map parse_header header_lines in
+                let body_lines, save_to = extract_save body_lines in
                 let headers, body =
                   match multipart_boundary headers with
                   | Some boundary ->
@@ -207,7 +232,7 @@ let parse_block ~start_line block =
                       (headers, Ast.Body_multipart (parse_multipart ~boundary body_lines))
                   | None -> (headers, parse_body body_lines)
                 in
-                Ok { Ast.name; method_; url; headers; body }))
+                Ok { Ast.name; method_; url; headers; body; save_to }))
   in
   skip_leading_metadata start_line None block
 

@@ -31,12 +31,21 @@ let body_args method_ = function
       | Ast.Put -> [ "-T"; path ]
       | _ -> [ "--data-binary"; "@" ^ path ])
 
+(* When saving to a known path, stream the body straight to the file with [-o]
+   and dump the headers to stdout with [-D -] so the response buffer still shows
+   status/headers without routing binary bytes through the text renderer. When
+   the path is omitted (derive from Content-Disposition) the file name is not
+   known up front, so fall back to the header+body capture that [-i] provides. *)
+let capture_args = function
+  | Some { Ast.save_path = Some path; _ } -> [ "-D"; "-"; "-o"; path ]
+  | Some { Ast.save_path = None; _ } | None -> [ "-i" ]
+
 let to_curl request =
   let request = Ast.apply_host_header request in
   let method_ = Ast.method_to_string request.Ast.method_ in
   let headers = List.concat_map header_arg request.headers in
   let args =
-    [ "-i"; "-s"; "-X"; method_ ] @ headers
+    capture_args request.save_to @ [ "-s"; "-X"; method_ ] @ headers
     @ body_args request.method_ request.body
     @ [ request.url; "-w"; "\n%{http_code}\n%{time_total}" ]
   in

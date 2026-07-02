@@ -11,21 +11,6 @@ local warn = health.warn or health.report_warn
 local error_ = health.error or health.report_error
 local info = health.info or health.report_info
 
-local function newest_source_mtime(root)
-  -- Newest mtime among the OCaml sources; used to detect a stale binary.
-  local newest = 0
-  for _, dir in ipairs({ "lib", "bin" }) do
-    local glob = root .. "/" .. dir .. "/*.ml"
-    for _, path in ipairs(vim.fn.glob(glob, false, true)) do
-      local m = vim.fn.getftime(path)
-      if m > newest then
-        newest = m
-      end
-    end
-  end
-  return newest
-end
-
 function M.check()
   local freight = require("freight")
 
@@ -50,12 +35,9 @@ function M.check()
   local exe = freight.executable()
   if vim.fn.filereadable(exe) == 1 then
     ok("binary present: " .. exe)
-    local root = vim.fn.fnamemodify(exe, ":h:h:h:h") -- .../_build/default/bin -> plugin root
-    local bin_mtime = vim.fn.getftime(exe)
-    local src_mtime = newest_source_mtime(root)
-    if src_mtime > 0 and src_mtime > bin_mtime then
+    if freight.stale_binary() then
       warn("binary is older than the OCaml sources", {
-        "Run `dune build` in " .. root,
+        "Run `dune build` in the plugin repo,",
         "then :FreightRestart to load the new binary",
       })
     else

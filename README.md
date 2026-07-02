@@ -62,6 +62,7 @@ vim.g.freight_executable = '/path/to/main.exe'
 | Command | Description |
 | --- | --- |
 | `:FreightStart` | Start the plugin process manually |
+| `:FreightRestart` | Restart the process (reload a rebuilt binary) |
 | `:FreightOpen` | Open a scratch request buffer |
 | `:FreightRun` | Parse the request at cursor, execute curl in the background, render the response |
 | `:FreightRunAll` | Execute every request in the current buffer and show grouped Failed/Successful results |
@@ -72,6 +73,7 @@ vim.g.freight_executable = '/path/to/main.exe'
 | `:FreightHistory` | Show recent request history |
 | `:FreightViewHistory <index>` | Open a response from request history |
 | `:FreightViewRunAll <line>` | Open a result from the latest run-all summary; normally used by pressing Enter in `freight://run-all` |
+| `:checkhealth freight` | Diagnose the process, curl, and whether the binary is up to date |
 
 ## Suggested keymaps
 

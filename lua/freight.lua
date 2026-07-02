@@ -16,6 +16,32 @@ local function on_stderr(_, data, _)
   vim.notify("freight stderr: " .. table.concat(data, "\n"), vim.log.levels.ERROR)
 end
 
+-- Newest mtime among the OCaml sources under the plugin root, or 0 if none
+-- (e.g. an installed build with no sources shipped).
+function M.newest_source_mtime()
+  local newest = 0
+  for _, dir in ipairs({ "lib", "bin" }) do
+    for _, path in ipairs(vim.fn.glob(plugin_root .. "/" .. dir .. "/*.ml", false, true)) do
+      local m = vim.fn.getftime(path)
+      if m > newest then
+        newest = m
+      end
+    end
+  end
+  return newest
+end
+
+-- True when a built binary exists but is older than the sources — the "pulled
+-- source but forgot to rebuild" state that silently serves an old binary.
+function M.stale_binary()
+  local exe = resolve_executable()
+  if vim.fn.filereadable(exe) == 0 then
+    return false
+  end
+  local src = M.newest_source_mtime()
+  return src > 0 and src > vim.fn.getftime(exe)
+end
+
 function M.start()
   if job_id > 0 then
     vim.notify("freight: already running (channel " .. job_id .. ")")
@@ -28,6 +54,12 @@ function M.start()
       vim.log.levels.ERROR
     )
     return
+  end
+  if M.stale_binary() then
+    vim.notify(
+      "freight: binary is older than the sources — run `dune build` and :FreightRestart",
+      vim.log.levels.WARN
+    )
   end
   job_id = vim.fn.jobstart({ exe }, { rpc = true, on_stderr = on_stderr })
   if job_id <= 0 then

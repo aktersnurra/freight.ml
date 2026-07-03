@@ -19,3 +19,26 @@ jobs:
 
       - name: Run tests
         run: opam exec -- dune build @test/runtest
+
+  nvim-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: "5.2"
+
+      - name: Install dependencies
+        run: opam install . --deps-only --yes
+
+      - name: Build binary
+        run: opam exec -- dune build bin/main.exe
+
+      - uses: rhysd/action-setup-vim@v1
+        with:
+          neovim: true
+          version: stable
+
+      - name: Headless :FreightRun e2e
+        run: bash test/nvim_e2e.sh

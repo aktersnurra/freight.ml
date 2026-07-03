@@ -123,11 +123,16 @@ let rec run : type a. proc_mgr:_ -> sw:_ -> rpc:_ -> (unit -> a) -> a =
           | Freight_effect.Fork (_label, child) ->
             Some (fun (k : (a, _) Effect.Deep.continuation) ->
               Eio.Fiber.fork ~sw (fun () ->
+                (* Nothing raised in a forked fiber may escape to [~sw] — that
+                   would cancel the switch and kill the whole RPC loop. Guard the
+                   error-reporting path too, in case the notify RPC itself faults. *)
                 try run ~proc_mgr ~sw ~rpc child
-                with exn ->
-                  run ~proc_mgr ~sw ~rpc (fun () ->
-                    Freight_effect.notify Freight_effect.Error
-                      (Printexc.to_string exn)));
+                with exn -> (
+                  try
+                    run ~proc_mgr ~sw ~rpc (fun () ->
+                      Freight_effect.notify Freight_effect.Error
+                        (Printexc.to_string exn))
+                  with _ -> ()));
               Effect.Deep.continue k ())
           | Freight_effect.Nvim_call (method_, params) ->
             Some (fun (k : (a, _) Effect.Deep.continuation) ->

@@ -320,6 +320,48 @@ let test_at_cursor_empty_is_no_request =
       | Error `No_request -> true
       | _ -> false)
 
+(* ── J3: Render ∘ parse round-trip ─────────────────────────────────────── *)
+
+(* A generated request that renders and re-parses to itself. Values are kept
+   trim-safe (no leading/trailing whitespace, no newlines) so the parser's
+   trimming does not perturb the round-trip. *)
+let gen_render_request =
+  let gen_headers =
+    Gen.list_size (Gen.int_range 0 4)
+      (Gen.pair gen_header_name
+         (Gen.map (fun s -> "v" ^ s) (Gen.string_size ~gen:(Gen.char_range 'a' 'z') (Gen.int_range 0 8))))
+  in
+  let gen_body =
+    Gen.oneof
+      [ Gen.return Ast.Body_none
+      ; Gen.map (fun s -> Ast.Body_inline ("{\"k\":\"" ^ s ^ "\"}"))
+          (Gen.string_size ~gen:(Gen.char_range 'a' 'z') (Gen.int_range 1 8))
+      ; Gen.map (fun s -> Ast.Body_file ("./" ^ s ^ ".json"))
+          (Gen.string_size ~gen:(Gen.char_range 'a' 'z') (Gen.int_range 1 8))
+      ]
+  in
+  Gen.map4
+    (fun method_ host headers body ->
+      { dummy_request with
+        method_
+      ; url = "https://" ^ host
+      ; headers
+      ; body
+      })
+    gen_named_method
+    (Gen.string_size ~gen:(Gen.char_range 'a' 'z') (Gen.int_range 1 12))
+    gen_headers gen_body
+
+let test_render_parse_roundtrip =
+  Test.make ~name:"parse (render r) = r for generated requests" ~count:400
+    gen_render_request
+    (fun r ->
+      match Parser.parse_string (Render.request r) with
+      | Ok { requests = [ r2 ]; _ } ->
+        r2.method_ = r.method_ && r2.url = r.url && r2.headers = r.headers
+        && r2.body = r.body
+      | _ -> false)
+
 (* ── J2: Parser round-trip ─────────────────────────────────────────────── *)
 
 (* Build a canonical .http request from generated parts and confirm the parser
@@ -421,6 +463,7 @@ let () =
       test_at_cursor_valid_request;
       test_at_cursor_empty_is_no_request;
       test_parse_roundtrip;
+      test_render_parse_roundtrip;
       (* K *)
       test_to_curl_always_has_method;
       test_to_curl_always_has_url;

@@ -296,6 +296,39 @@ let test_parse_body_file _ =
       assert_equal (Freight.Ast.Body_file "fixtures/payload.json") request.body
   | _ -> assert_failure "expected one request"
 
+let roundtrip source =
+  match Freight.Parser.parse_string source with
+  | Ok { requests = [ r ]; _ } ->
+    let rendered = Freight.Render.request r in
+    (match Freight.Parser.parse_string rendered with
+     | Ok { requests = [ r2 ]; _ } -> (r, r2, rendered)
+     | _ -> assert_failure ("re-parse failed for:\n" ^ rendered))
+  | _ -> assert_failure ("parse failed: " ^ source)
+
+let assert_roundtrips source =
+  let r, r2, rendered = roundtrip source in
+  assert_equal ~printer:(fun _ -> "\n--- rendered ---\n" ^ rendered) r r2
+
+let test_render_roundtrip_simple _ =
+  assert_roundtrips "# @name login\nPOST https://api.test/auth\nContent-Type: application/json\n\n{\"user\":\"me\"}\n"
+
+let test_render_roundtrip_no_body _ =
+  assert_roundtrips "GET https://api.test/health\nAccept: application/json\n"
+
+let test_render_roundtrip_file_body _ =
+  assert_roundtrips "PUT https://api.test/up\n\n< ./payload.json\n"
+
+let test_render_roundtrip_assertions _ =
+  assert_roundtrips
+    "# @name create\n# @expect status 201\n# @expect header Content-Type contains json\n# @expect body data.id exists\nPOST https://api.test/x\n\n{\"a\":1}\n"
+
+let test_render_roundtrip_save _ =
+  assert_roundtrips "GET https://api.test/dl\n\n>>! ./out.bin\n"
+
+let test_render_roundtrip_multipart _ =
+  assert_roundtrips
+    "# @name up\nPOST https://api.test/imports\nContent-Type: multipart/form-data; boundary=boundary\n\n--boundary\nContent-Disposition: form-data; name=\"file\"; filename=\"f.xlsx\"\nContent-Type: application/vnd.ms-excel\n\n< ./f.xlsx\n--boundary\nContent-Disposition: form-data; name=\"note\"\n\nhello\n--boundary--\n"
+
 let test_parse_expect_status _ =
   let file = parse_ok "# @expect status 201\nGET https://x/\n" in
   match file.requests with
@@ -1478,6 +1511,12 @@ let suite =
          "parse error reports request line in second block"
          >:: test_parse_error_reports_request_line_in_second_block;
          "parse_body_file" >:: test_parse_body_file;
+         "render_roundtrip_simple" >:: test_render_roundtrip_simple;
+         "render_roundtrip_no_body" >:: test_render_roundtrip_no_body;
+         "render_roundtrip_file_body" >:: test_render_roundtrip_file_body;
+         "render_roundtrip_assertions" >:: test_render_roundtrip_assertions;
+         "render_roundtrip_save" >:: test_render_roundtrip_save;
+         "render_roundtrip_multipart" >:: test_render_roundtrip_multipart;
          "parse_expect_status" >:: test_parse_expect_status;
          "parse_expect_header" >:: test_parse_expect_header;
          "parse_expect_body_exists" >:: test_parse_expect_body_exists;

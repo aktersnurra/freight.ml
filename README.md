@@ -242,6 +242,13 @@ Precedence, first match wins: generated values → `$env` → response chaining 
 `.env` files → OS-environment fallback. A reference that resolves nowhere is
 reported as an unresolved variable and the request fails fast.
 
+## Cookies
+
+Each `.http` buffer gets its own curl cookie jar for the session, automatically.
+A response's `Set-Cookie` is stored and replayed on later requests from the same
+buffer — so a login-then-call flow against a cookie-session API just works, no
+syntax required. The jar is per-buffer and cleared when the process restarts.
+
 ## Response chaining
 
 Named request responses are addressable from later requests via

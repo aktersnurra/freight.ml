@@ -371,7 +371,8 @@ let freight_run state =
       show_error_state state
         (Printf.sprintf "%s already exists — use >>! to overwrite." path)
     else
-      let invocation = Freight.Executor.to_curl request in
+      let cookie_jar = State.cookie_jar state buf in
+      let invocation = Freight.Executor.to_curl ~cookie_jar request in
       let name = Freight.Buffer.buffer_name request in
       let loading_buf =
         show_or_update state
@@ -475,7 +476,7 @@ let freight_run_all state =
                 ; request; message = unresolved_message unresolved; response = None }
               :: !results
           else begin
-          let invocation = Freight.Executor.to_curl request in
+          let invocation = Freight.Executor.to_curl ~cookie_jar:(State.cookie_jar state buf) request in
           match Freight_effect.run_curl invocation with
           | Error message ->
             results :=

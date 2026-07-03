@@ -39,8 +39,12 @@ type t = {
   mutable history : history_entry list;
   mutable run_all_results : run_all_result list;
   mutable run_all_summary : string list;
+  cookie_jars : (Freight_effect.buffer_id, string) Hashtbl.t;
 }
 
 val create : unit -> t
 val set_active_env : t -> string option -> unit
 val push_history : t -> Freight.Ast.request -> Freight.Ast.response -> string -> unit
+
+val cookie_jar : t -> Freight_effect.buffer_id -> string
+(** The per-buffer curl cookie jar path, created on first use. *)

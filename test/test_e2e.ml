@@ -217,6 +217,31 @@ let test_e2e_malformed_json_body _ =
   (* No exception; the ref simply does not resolve. *)
   assert_equal None (src "seed.response.body.anything")
 
+(* ── Cookie jar: a Set-Cookie from request 1 is replayed on request 2 ─────── *)
+
+let test_e2e_cookie_jar_chains _ =
+  (* The mock sets a session cookie on every response; two GETs share one jar. *)
+  let server =
+    Mock_server.start ~count:2 (fun _ ->
+        Mock_server.raw_response
+          ~headers:[ ("Content-Type", "application/json"); ("Set-Cookie", "sid=xyz789; Path=/") ]
+          {|{"ok":true}|})
+  in
+  let jar = temp_file ".cookies" in
+  let req path = base_request ~url:(Mock_server.url server path) in
+  (* Request 1: receives Set-Cookie, curl writes it to the jar (-c). *)
+  ignore (run_curl (Freight.Executor.to_curl ~cookie_jar:jar (req "/login")));
+  (* Request 2: curl sends the stored cookie back (-b). *)
+  ignore (run_curl (Freight.Executor.to_curl ~cookie_jar:jar (req "/me")));
+  Mock_server.stop server;
+  if Sys.file_exists jar then Sys.remove jar;
+  match Mock_server.requests server with
+  | [ _first; second ] ->
+    assert_equal ~printer:(function Some s -> s | None -> "<no cookie>")
+      (Some "sid=xyz789") (Mock_server.header second "Cookie")
+  | other ->
+    assert_failure (Printf.sprintf "expected 2 requests, got %d" (List.length other))
+
 let suite =
   "e2e"
   >::: [ "e2e_get_and_parse" >:: test_e2e_get_and_parse
@@ -226,6 +251,7 @@ let suite =
        ; "e2e_save_binary_body_byte_identical" >:: test_e2e_save_binary_body_byte_identical
        ; "e2e_error_status" >:: test_e2e_error_status
        ; "e2e_malformed_json_body" >:: test_e2e_malformed_json_body
+       ; "e2e_cookie_jar_chains" >:: test_e2e_cookie_jar_chains
        ]
 
 let () = run_test_tt_main suite

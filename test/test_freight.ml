@@ -577,6 +577,25 @@ let test_to_curl_save_uses_o_and_dump _ =
       assert_bool "does not use -i" (not (List.mem "-i" invocation.args))
   | _ -> assert_failure "expected one request"
 
+let test_to_curl_cookie_jar _ =
+  let file = parse_ok "GET https://example.com/\n" in
+  match file.requests with
+  | [ request ] ->
+    let invocation = Freight.Executor.to_curl ~cookie_jar:"/tmp/jar.txt" request in
+    assert_bool "reads cookies with -b"
+      (List.mem "-b" invocation.args && List.mem "/tmp/jar.txt" invocation.args);
+    assert_bool "writes cookies with -c" (List.mem "-c" invocation.args)
+  | _ -> assert_failure "expected one request"
+
+let test_to_curl_no_cookie_jar _ =
+  let file = parse_ok "GET https://example.com/\n" in
+  match file.requests with
+  | [ request ] ->
+    let invocation = Freight.Executor.to_curl request in
+    assert_bool "no -b" (not (List.mem "-b" invocation.args));
+    assert_bool "no -c" (not (List.mem "-c" invocation.args))
+  | _ -> assert_failure "expected one request"
+
 let test_to_curl_no_save_uses_i _ =
   let file = parse_ok "GET https://example.com/template\n" in
   match file.requests with
@@ -1549,6 +1568,8 @@ let suite =
          "parse_save_redirect_with_body" >:: test_parse_save_redirect_with_body;
          "to_curl_save_uses_o_and_dump" >:: test_to_curl_save_uses_o_and_dump;
          "to_curl_no_save_uses_i" >:: test_to_curl_no_save_uses_i;
+         "to_curl_cookie_jar" >:: test_to_curl_cookie_jar;
+         "to_curl_no_cookie_jar" >:: test_to_curl_no_cookie_jar;
          "golden_curl_inline_body" >:: test_golden_curl_inline_body;
          "golden_curl_get_no_body" >:: test_golden_curl_get_no_body;
          "golden_curl_file_body_post" >:: test_golden_curl_file_body_post;

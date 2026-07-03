@@ -305,6 +305,24 @@ let test_freight_run_generated_uuid _ =
          contains ~needle:"00000000-0000-4000-8000-000000000000" a)
        calls)
 
+let test_freight_run_uses_cookie_jar _ =
+  let config =
+    { Test_runtime_fake.default_config with
+      buffer_lines = [ "GET https://example.com/x" ]
+    ; curl_result = Ok ok_response
+    ; fork_mode = `Run_immediately
+    }
+  in
+  let (), calls =
+    Test_runtime_fake.run config @@ fun () -> Handlers.freight_run (State.create ())
+  in
+  assert_bool "curl saves cookies (-c)"
+    (curl_arg_matches (fun a -> a = "-c") calls);
+  assert_bool "curl sends cookies (-b)"
+    (curl_arg_matches (fun a -> a = "-b") calls);
+  assert_bool "jar path is a freight cookie file"
+    (curl_arg_matches (fun a -> contains ~needle:"freight-cookies-" a) calls)
+
 let test_freight_run_success _ =
   let curl_output =
     "HTTP/1.1 200 OK\r\n\
@@ -1253,6 +1271,7 @@ let suite =
     ; "freight_run $env unset does not curl" >:: test_freight_run_dollar_env_unset_does_not_curl
     ; "freight_run OS env fallback" >:: test_freight_run_os_env_fallback
     ; "freight_run generated uuid" >:: test_freight_run_generated_uuid
+    ; "freight_run uses cookie jar" >:: test_freight_run_uses_cookie_jar
     ; "freight_run_all assertion failure is failed" >:: test_freight_run_all_assertion_failure_is_failed
     ; "freight_run_all assertion pass is success" >:: test_freight_run_all_assertion_pass_is_success
     ; "freight_run unresolved var does not curl" >:: test_freight_run_unresolved_var_does_not_curl

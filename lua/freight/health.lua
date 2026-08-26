@@ -31,6 +31,15 @@ function M.check()
     error_("curl not found on $PATH", { "Install curl; freight shells out to it" })
   end
 
+  -- Platform / release asset
+  local install = require("freight.install")
+  local asset, why = install.asset()
+  if asset then
+    ok("platform supported: " .. asset .. " (" .. install.version .. ")")
+  else
+    warn(why, { "No prebuilt binary for this platform; build from source with `dune build`" })
+  end
+
   -- Binary + staleness
   local exe = freight.executable()
   if vim.fn.filereadable(exe) == 1 then
@@ -40,12 +49,23 @@ function M.check()
         "Run `dune build` in the plugin repo,",
         "then :FreightRestart to load the new binary",
       })
+    elseif exe == install.binary_path() then
+      local v = install.installed_version()
+      if v == install.version then
+        ok("installed release binary is up to date (" .. v .. ")")
+      else
+        warn("installed binary is " .. tostring(v) .. ", plugin expects " .. install.version, {
+          "Run :FreightInstall! to fetch the matching binary,",
+          "then :FreightRestart",
+        })
+      end
     else
       ok("binary is up to date")
     end
   else
     error_("binary not found: " .. exe, {
-      "Run `dune build` in the plugin repo,",
+      "Run :FreightInstall to download the release binary,",
+      "or `dune build` in the plugin repo,",
       "or set g:freight_executable to the built main.exe",
     })
   end

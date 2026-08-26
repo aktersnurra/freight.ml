@@ -13,6 +13,13 @@ vim.api.nvim_create_user_command("FreightStart", function()
   freight.start()
 end, { desc = "Start the freight RPC process" })
 
+vim.api.nvim_create_user_command("FreightInstall", function(opts)
+  require("freight.install").build({ force = opts.bang })
+end, {
+  bang = true,
+  desc = "Download the freight release binary (:FreightInstall! to reinstall)",
+})
+
 vim.api.nvim_create_user_command("FreightRestart", function()
   freight.restart()
   vim.notify("freight: restarted")

@@ -11,15 +11,55 @@ The core library, command shell, and HTTP execution are implemented. `:FreightRu
 ## Requirements
 
 - Neovim >= 0.11
+- curl (runtime, and to download the prebuilt binary)
+- Telescope.nvim (optional; required for `:FreightEnv` without an argument)
+
+Only when building from source:
+
 - OCaml >= 5.1
 - dune >= 3.21
-- curl (runtime)
-- Telescope.nvim (optional; required for `:FreightEnv` without an argument)
 - opam packages: `angstrom`, `yojson`, `re`, `msgpck`, `eio`, `eio_main`, `eio_posix`
 
 ## Installation
 
-### 1. Build the binary
+Releases ship prebuilt binaries, so an OCaml toolchain is only needed if you
+build from source.
+
+| Platform | Prebuilt |
+| --- | --- |
+| Linux x86_64 (glibc 2.35+) | ✅ |
+| Linux aarch64 (glibc 2.35+) | ✅ |
+| macOS Apple Silicon | ✅ |
+| macOS Intel | build from source |
+
+**lazy.nvim:**
+
+```lua
+{
+  "aktersnurra/freight.ml",
+  build = function() require("freight.install").build() end,
+}
+```
+
+**vim-plug:**
+
+```vim
+Plug 'aktersnurra/freight.ml', { 'do': ':FreightInstall' }
+```
+
+The `build` step downloads the binary matching your platform into
+`stdpath("data")/freight` and verifies it against the release's `SHA256SUMS`.
+If you install without running the build step, the plugin downloads the binary
+on first use instead. To (re)install manually:
+
+```vim
+:FreightInstall     " download if missing
+:FreightInstall!    " force a reinstall
+```
+
+### Building from source
+
+Needed on unsupported platforms, or for development:
 
 ```sh
 git clone https://github.com/aktersnurra/freight.ml
@@ -28,39 +68,29 @@ opam install . --deps-only
 dune build
 ```
 
-### 2. Add to Neovim
+A local `_build/default/bin/main.exe` is used automatically when no release
+binary is installed, so the dev loop needs no extra configuration.
 
-**lazy.nvim:**
-
-```lua
-{
-  "aktersnurra/freight.ml",
-  build = "dune build",
-}
-```
-
-**vim-plug:**
-
-```vim
-Plug 'aktersnurra/freight.ml', { 'do': 'dune build' }
-```
-
-The plugin auto-starts the OCaml process when you open a `*.http` or `*.rest` file. To start it manually:
+The plugin auto-starts the OCaml process when you open a `*.http` or `*.rest`
+file. To start it manually:
 
 ```vim
 :FreightStart
 ```
 
-If the binary lives somewhere other than `_build/default/bin/main.exe`, point Neovim at it:
+To point Neovim at a binary elsewhere:
 
 ```lua
 vim.g.freight_executable = '/path/to/main.exe'
 ```
 
+Run `:checkhealth freight` to see which binary is in use.
+
 ## Commands
 
 | Command | Description |
 | --- | --- |
+| `:FreightInstall` | Download the release binary (`!` to force a reinstall) |
 | `:FreightStart` | Start the plugin process manually |
 | `:FreightRestart` | Restart the process (reload a rebuilt binary) |
 | `:FreightOpen` | Open a scratch request buffer |

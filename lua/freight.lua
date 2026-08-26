@@ -4,12 +4,39 @@ local plugin_root = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:
 local job_id = 0
 local ready = false
 
+local function dev_executable()
+  return plugin_root .. "/_build/default/bin/main.exe"
+end
+
+-- g:freight_executable wins, then a downloaded release binary, then a local
+-- `dune build` tree. The dev tree is preferred over a release binary only when
+-- no release binary is installed, so a working-copy build never shadows a
+-- deliberate install.
 local function resolve_executable()
   local g_exe = vim.g.freight_executable
   if g_exe and g_exe ~= "" then
     return g_exe
   end
-  return plugin_root .. "/_build/default/bin/main.exe"
+
+  local install = require("freight.install")
+  if install.is_installed() then
+    return install.binary_path()
+  end
+
+  local dev = dev_executable()
+  if vim.fn.filereadable(dev) == 1 then
+    return dev
+  end
+
+  -- Nothing built and nothing installed: name the install path so the error
+  -- and :checkhealth point at where the binary is supposed to land.
+  return install.binary_path()
+end
+
+-- True when the resolved binary is the in-repo `dune build` output, which is
+-- the only case where staleness against the OCaml sources is meaningful.
+local function using_dev_executable()
+  return resolve_executable() == dev_executable()
 end
 
 local function on_stderr(_, data, _)
@@ -34,6 +61,9 @@ end
 -- True when a built binary exists but is older than the sources — the "pulled
 -- source but forgot to rebuild" state that silently serves an old binary.
 function M.stale_binary()
+  if not using_dev_executable() then
+    return false
+  end
   local exe = resolve_executable()
   if vim.fn.filereadable(exe) == 0 then
     return false
@@ -49,11 +79,23 @@ function M.start()
   end
   local exe = resolve_executable()
   if vim.fn.filereadable(exe) == 0 then
-    vim.notify(
-      "freight: executable not found at " .. exe .. ". Run `dune build` in the plugin repo or set g:freight_executable.",
-      vim.log.levels.ERROR
-    )
-    return
+    -- Lazy fallback for installs that skipped the `build` hook: fetch the
+    -- release binary once, then continue.
+    local install = require("freight.install")
+    local ok, msg = install.install()
+    if not ok then
+      vim.notify(
+        msg .. "\nRun `dune build` in the plugin repo or set g:freight_executable.",
+        vim.log.levels.ERROR
+      )
+      return
+    end
+    vim.notify(msg)
+    exe = resolve_executable()
+    if vim.fn.filereadable(exe) == 0 then
+      vim.notify("freight: executable still not found at " .. exe, vim.log.levels.ERROR)
+      return
+    end
   end
   if M.stale_binary() then
     vim.notify(

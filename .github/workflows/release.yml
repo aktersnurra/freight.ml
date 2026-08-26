@@ -1,0 +1,94 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and release (e.g. v0.1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # glibc 2.35: binaries run on Ubuntu 22.04+, Debian 12+, and every
+          # rolling distro (Arch/Artix), since glibc is backward compatible.
+          - runner: ubuntu-22.04
+            asset: freight-linux-x86_64
+          - runner: ubuntu-22.04-arm
+            asset: freight-linux-aarch64
+          - runner: macos-14
+            asset: freight-macos-aarch64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: "5.5"
+
+      - name: Install dependencies
+        run: opam install . --deps-only --yes
+
+      - name: Build binary
+        run: opam exec -- dune build --profile release bin/main.exe
+
+      - name: Stage asset
+        run: |
+          set -euo pipefail
+          install -m 755 _build/default/bin/main.exe "${{ matrix.asset }}"
+          # main.exe speaks msgpack RPC on stdin and takes no flags, so the
+          # smoke test is the file type, not running it.
+          file "${{ matrix.asset }}"
+          shasum -a 256 "${{ matrix.asset }}" > "${{ matrix.asset }}.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: |
+            ${{ matrix.asset }}
+            ${{ matrix.asset }}.sha256
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Collect checksums
+        run: |
+          set -euo pipefail
+          cd dist
+          # Each build job wrote "<sum>  <bare-asset-name>"; concatenating them
+          # is the whole release manifest.
+          cat ./*.sha256 > SHA256SUMS
+          rm -f ./*.sha256
+          ls -l
+          cat SHA256SUMS
+          # Every matrix asset must be present, or the release is partial.
+          for a in freight-linux-x86_64 freight-linux-aarch64 freight-macos-aarch64; do
+            grep -q " $a\$" SHA256SUMS || { echo "missing $a in SHA256SUMS" >&2; exit 1; }
+          done
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          files: |
+            dist/freight-*
+            dist/SHA256SUMS
+          fail_on_unmatched_files: true
+          generate_release_notes: true

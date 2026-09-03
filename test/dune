@@ -17,3 +17,8 @@
  (name test_e2e)
  (modules test_e2e mock_server)
  (libraries freight ounit2 unix threads.posix))
+
+(test
+ (name test_scratch)
+ (modules test_scratch)
+ (libraries freight_plugin ounit2 msgpck))

@@ -19,6 +19,8 @@ val set_keymap :
   command:string ->
   unit
 
+val float_width : screen_width:int -> line_widths:int list -> int
+
 val show_float :
   call:(string -> Msgpck.t list -> Msgpck.t) ->
   lines:string list ->

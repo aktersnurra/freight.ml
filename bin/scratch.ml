@@ -19,6 +19,11 @@ let set_window_chrome ~call =
   set "signcolumn" (Msgpck.String "no");
   set "foldcolumn" (Msgpck.String "0")
 
+let float_width ~screen_width ~line_widths =
+  let content_width = List.fold_left max 1 line_widths in
+  let available_width = max 1 (screen_width - 2) in
+  min content_width available_width
+
 let show ~call ~name ~filetype ~lines =
   let buf = call "nvim_create_buf" [ Msgpck.Bool false; Msgpck.Bool true ] in
   let handle_int = buf_handle_int buf in
@@ -92,7 +97,6 @@ let show_float ~call ~lines =
     [ buf; Msgpck.Int 0; Msgpck.Int (-1); Msgpck.Bool false; msgpack_lines ]);
   ignore (call "nvim_buf_set_option"
     [ buf; Msgpck.String "modifiable"; Msgpck.Bool false ]);
-  let width = 40 in
   let height = List.length flat_lines in
   let ui_info = call "nvim_list_uis" [] in
   let screen_w, screen_h =
@@ -106,6 +110,15 @@ let show_float ~call ~lines =
       (find "width", find "height")
     | _ -> (80, 24)
   in
+  let line_widths =
+    List.map
+      (fun line ->
+        match call "nvim_strwidth" [ Msgpck.String line ] with
+        | Msgpck.Int width -> width
+        | _ -> 0)
+      flat_lines
+  in
+  let width = float_width ~screen_width:screen_w ~line_widths in
   let row = (screen_h - height) / 2 in
   let col = (screen_w - width) / 2 in
   let opts =

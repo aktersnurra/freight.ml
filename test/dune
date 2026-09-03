@@ -12,3 +12,8 @@
  (name test_handlers)
  (modules test_handlers test_runtime_fake)
  (libraries freight freight_plugin ounit2 msgpck))
+
+(test
+ (name test_scratch)
+ (modules test_scratch)
+ (libraries freight_plugin ounit2 msgpck))

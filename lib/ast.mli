@@ -67,6 +67,7 @@ type parse_error = {
 }
 
 type http_file = {
+  variables : (string * string) list;
   requests : request list;
   path : string;
 }

@@ -1256,9 +1256,50 @@ let test_freight_view_history _ =
   assert_bool "shows response scratch"
     (has_show_scratch ~name:"freight://response/r1" calls)
 
+let test_file_variables_commands _ =
+  let config =
+    { Test_runtime_fake.default_config with
+      buffer_lines =
+        [ "@x = file"; "###"; "POST https://example.test/{{x}}"
+        ; "X-Value: {{x}}"; ""; "{{x}}"; "###"
+        ; "GET https://example.test/{{x}}" ]
+    ; cursor = { Freight_effect.Cursor.row = 2; col = 0 }
+    ; buffer_dir = Some "/project"
+    ; env = Freight.Env.of_list [ "x", "dotenv" ]
+    ; env_vars = [ "x", "shell" ]
+    ; curl_result = Ok ok_response
+    }
+  in
+  let state = State.create () in
+  let (), calls = Test_runtime_fake.run config (fun () -> Handlers.freight_run state) in
+  assert_equal 1 (count_run_curl calls);
+  List.iter
+    (fun value -> assert_bool ("curl contains " ^ value) (curl_arg_matches ((=) value) calls))
+    [ "https://example.test/file"; "X-Value: file"; "file" ];
+  let (), calls = Test_runtime_fake.run config (fun () -> Handlers.freight_run_all state) in
+  assert_equal 2 (count_run_curl calls);
+  assert_bool "run-all substitutes every URL"
+    (List.for_all (function
+       | Test_runtime_fake.Run_curl inv -> List.mem "https://example.test/file" inv.args
+       | _ -> true) calls);
+  let (), calls = Test_runtime_fake.run config (fun () -> Handlers.freight_inspect state) in
+  assert_bool "inspect substitutes file variables"
+    (has_call (function
+       | Test_runtime_fake.Update_scratch (_, view)
+       | Test_runtime_fake.Show_scratch view ->
+         view.name = "freight://inspect"
+         && List.exists (contains ~needle:"https://example.test/file") view.lines
+       | _ -> false) calls);
+  let config = { config with buffer_lines = [ "GET https://example.test/{{x}}" ];
+                             cursor = { Freight_effect.Cursor.row = 0; col = 0 } } in
+  let (), calls = Test_runtime_fake.run config (fun () -> Handlers.freight_run state) in
+  assert_bool "file variables do not leak into subsequent buffers"
+    (curl_arg_matches ((=) "https://example.test/dotenv") calls)
+
 let suite =
   "Handlers" >:::
-    [ "freight_open" >:: test_freight_open
+    [ "file variables across commands" >:: test_file_variables_commands
+    ; "freight_open" >:: test_freight_open
     ; "freight_env" >:: test_freight_env
     ; "freight_inspect parse error" >:: test_freight_inspect_parse_error
     ; "freight_inspect valid" >:: test_freight_inspect_valid

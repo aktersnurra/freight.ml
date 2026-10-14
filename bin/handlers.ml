@@ -70,7 +70,7 @@ let generated_env : Freight.Generated.env =
   }
 
 (* Precedence (first wins): generated values, then $env, then response-chaining,
-   then .env, then a bare-{{VAR}} OS-environment fallback. *)
+   then file variables over .env, then a bare-{{VAR}} OS-environment fallback. *)
 let resolver_sources env responses =
   [ Freight.Generated.source generated_env
   ; dollar_env_source
@@ -79,13 +79,19 @@ let resolver_sources env responses =
   ; os_env_source
   ]
 
-let build_resolver state buf =
-  let env = resolve_env state buf in
+let build_resolver state buf variables =
+  let env =
+    Freight.Env.overlay ~base:(resolve_env state buf)
+      ~over:(Freight.Env.of_list variables)
+  in
   Freight.Resolver.make (resolver_sources env state.State.responses)
 
 let resolve_request state source cursor_line buf =
-  let resolver = build_resolver state buf in
-  Freight.Resolve.at_cursor_r ~source ~cursor_line ~resolver
+  match Freight.Parser.parse_variables source with
+  | Error error -> Error (`Parse error)
+  | Ok variables ->
+    let resolver = build_resolver state buf variables in
+    Freight.Resolve.at_cursor_r ~source ~cursor_line ~resolver
 
 let set_buf_keymaps buf =
   Freight_effect.set_keymap buf ~key:"q" ~command:":close<CR>";
@@ -429,7 +435,10 @@ let freight_run_all state =
     set_buf_keymaps scratch_buf
   | Ok { Freight.Ast.requests = []; _ } ->
     show_error_state state "No requests found in buffer."
-  | Ok _file ->
+  | Ok file ->
+    let base_env =
+      Freight.Env.overlay ~base:base_env ~over:(Freight.Env.of_list file.variables)
+    in
     (* Keep the requests unsubstituted here; each is resolved lazily inside the
        run loop against the accumulating env so that later requests can see the
        response variables injected by earlier ones. *)
@@ -457,7 +466,7 @@ let freight_run_all state =
           let line_number = index + 1 in
           let source_buffer = buf in
           (* Same source precedence as single-run: generated / $env / chaining /
-             .env / OS fallback. The store accrues earlier responses this run. *)
+             file variables / .env / OS fallback. The store accrues earlier responses this run. *)
           let resolver =
             Freight.Resolver.make (resolver_sources base_env state.State.responses)
           in

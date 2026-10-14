@@ -25,6 +25,60 @@ let split_blocks lines =
   loop [] [] 1 1 lines
   |> List.filter (fun (_, block) -> List.exists (fun line -> trim line <> "") block)
 
+(* Only leading metadata may declare file variables. Replace declarations with
+   blank lines so request spans and parse diagnostics retain source coordinates.
+   Values are literal, as with .env; the resolver still makes a single pass. *)
+let prepare_source source =
+  let valid_name name =
+    name <> ""
+    && String.for_all
+         (function
+           | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' | '-' | '.' -> true
+           | _ -> false)
+         name
+  in
+  let rec prepare_block env declared acc line_number = function
+    | [] -> Ok (env, declared, false, List.rev acc)
+    | line :: rest ->
+      let trimmed = trim line in
+      if trimmed = "" || starts_with ~prefix:"#" trimmed then
+        prepare_block env declared (line :: acc) (line_number + 1) rest
+      else if starts_with ~prefix:"@" trimmed then
+        (match String.index_opt trimmed '=' with
+         | Some index ->
+           let key = String.sub trimmed 1 (index - 1) |> trim in
+           if not (valid_name key) then
+             make_error ~line:line_number ~snippet:line "invalid file variable name"
+           else
+             let data =
+               String.sub trimmed (index + 1) (String.length trimmed - index - 1)
+               |> trim
+             in
+             prepare_block (Env.add env ~key ~data) true ("" :: acc)
+               (line_number + 1) rest
+         | None ->
+           make_error ~line:line_number ~snippet:line
+             "expected file variable declaration: @name = value")
+      else Ok (env, declared, true, List.rev_append acc (line :: rest))
+  in
+  let rec loop env blocks = function
+    | [] -> Ok (env, List.rev blocks)
+    | (start, block) :: rest ->
+      (match prepare_block env false [] start block with
+       | Error error -> Error error
+       | Ok (env, declared, has_request, block) ->
+         let blocks =
+           if declared && not has_request then blocks else (start, block) :: blocks
+         in
+         loop env blocks rest)
+  in
+  loop Env.empty [] (split_lines source |> split_blocks)
+
+let parse_variables source =
+  match prepare_source source with
+  | Error error -> Error error
+  | Ok (variables, _) -> Ok (Env.to_list variables)
+
 let parse_name line =
   let trimmed = trim line in
   if starts_with ~prefix:"# @name" trimmed then
@@ -281,27 +335,29 @@ let parse_block ~start_line block =
   in
   skip_leading_metadata start_line None [] block
 
+let parse_source_with_variables source =
+  match prepare_source source with
+  | Error error -> Error error
+  | Ok (variables, blocks) ->
+    let rec loop requests = function
+      | [] -> Ok (Env.to_list variables, List.rev requests)
+      | (start, block) :: rest -> (
+          match parse_block ~start_line:start block with
+          | Ok request -> loop ((start, request) :: requests) rest
+          | Error error -> Error error)
+    in
+    loop [] blocks
+
 let parse_source source =
-  let blocks = split_lines source |> split_blocks in
-  let rec loop requests = function
-    | [] -> Ok { Ast.requests = List.rev (List.map snd requests); path = "" }
-    | (start, block) :: rest -> (
-        match parse_block ~start_line:start block with
-        | Ok request -> loop ((start, request) :: requests) rest
-        | Error error -> Error error)
-  in
-  loop [] blocks
+  match parse_source_with_variables source with
+  | Error error -> Error error
+  | Ok (variables, requests) ->
+    Ok { Ast.variables; requests = List.map snd requests; path = "" }
 
 let parse_source_with_lines source =
-  let blocks = split_lines source |> split_blocks in
-  let rec loop acc = function
-    | [] -> Ok (List.rev acc)
-    | (start, block) :: rest -> (
-        match parse_block ~start_line:start block with
-        | Ok request -> loop ((start, request) :: acc) rest
-        | Error error -> Error error)
-  in
-  loop [] blocks
+  match parse_source_with_variables source with
+  | Error error -> Error error
+  | Ok (_, requests) -> Ok requests
 
 let parse_string = parse_source
 
@@ -344,7 +400,6 @@ let block_content_span ~start block =
     Some (first, last)
 
 let request_at_cursor source cursor_line =
-  let blocks = split_lines source |> split_blocks in
   let rec loop = function
     | [] -> None
     | (start, block) :: rest -> (
@@ -355,4 +410,6 @@ let request_at_cursor source cursor_line =
             | Error _ -> None)
         | _ -> loop rest)
   in
-  loop blocks
+  match prepare_source source with
+  | Error _ -> None
+  | Ok (_, blocks) -> loop blocks

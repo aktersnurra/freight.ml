@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-14
+
+### Fixed
+- Load `@name = value` file variables, including declarations before the first `###`, in Run, RunAll, and Inspect.
+- Execute each request once and reuse its captured verbose trace instead of replaying successful requests.
+- Display curl diagnostics for malformed URLs and transport failures.
+- Reject orphaned request metadata in declarations-only blocks with a source line number.
+
 ## [0.1.1] - 2026-10-02
 
 ### Fixed

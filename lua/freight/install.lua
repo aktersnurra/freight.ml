@@ -13,7 +13,7 @@ local M = {}
 -- Bumped in lockstep with the git tag the release workflow builds. The plugin
 -- refuses a binary installed for a different version rather than failing later
 -- with an opaque RPC error.
-M.version = "v0.1.1"
+M.version = "v0.1.2"
 
 local repo = "aktersnurra/freight.ml"
 

@@ -27,7 +27,7 @@ trap cleanup EXIT
 
 # Mock server: replies to any GET with a fixed JSON body; prints its port first.
 cat > "$workdir/mock.py" <<'PY'
-import http.server, socketserver
+import http.server, socketserver, sys
 BODY = b'{"token":"e2e-abc","nested":{"id":"deep-42"}}'
 class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
@@ -36,6 +36,16 @@ class H(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(BODY)))
         self.end_headers()
         self.wfile.write(BODY)
+    def do_POST(self):
+        self.rfile.read(int(self.headers.get("Content-Length", "0")))
+        with open(sys.argv[1], "a") as log:
+            log.write(self.path + "\n")
+        body = b'{"result":"created-once"}'
+        self.send_response(201)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
     def log_message(self, *a):
         pass
 srv = socketserver.TCPServer(("127.0.0.1", 0), H)
@@ -43,7 +53,7 @@ print(srv.server_address[1], flush=True)
 srv.serve_forever()
 PY
 
-exec 3< <(python3 "$workdir/mock.py")
+exec 3< <(python3 "$workdir/mock.py" "$workdir/posts.log")
 server_pid=$!
 read -r port <&3
 if [ -z "${port:-}" ]; then echo "FAIL: mock did not report a port" >&2; exit 1; fi
@@ -103,11 +113,13 @@ local ok, err = pcall(function()
     "GET example.com/ y",
     "###",
     "GET http://127.0.0.1:$port/ping",
+    "###",
+    "POST http://127.0.0.1:$port/create",
+    "Content-Type: application/json",
+    "",
+    "{}",
   })
-  local function run(row, expected)
-    vim.api.nvim_set_current_buf(source)
-    vim.api.nvim_win_set_cursor(0, {row, 0})
-    vim.cmd("FreightRun")
+  local function wait_for(expected)
     assert(vim.wait(6000, function()
       for _, b in ipairs(vim.api.nvim_list_bufs()) do
         if vim.api.nvim_buf_is_valid(b)
@@ -119,8 +131,17 @@ local ok, err = pcall(function()
       return false
     end), "response did not contain: " .. expected)
   end
+  local function run(row, expected)
+    vim.api.nvim_set_current_buf(source)
+    vim.api.nvim_win_set_cursor(0, {row, 0})
+    vim.cmd("FreightRun")
+    wait_for(expected)
+  end
   run(1, "curl: (3)")
   run(3, "e2e-abc")
+  run(5, "created-once")
+  vim.cmd("FreightView Verbose")
+  wait_for("> POST /create HTTP/1.1")
 end)
 if not ok then
   vim.api.nvim_err_writeln(tostring(err))
@@ -131,4 +152,11 @@ LUA
 nvim --headless -u "$workdir/init.lua" \
   -c "luafile $workdir/failure.lua" -c "qa!"
 
+if [ "$(grep -c '^/create$' "$workdir/posts.log")" -ne 1 ]; then
+  echo "FAIL: POST /create must reach the server exactly once" >&2
+  cat "$workdir/posts.log" >&2
+  exit 1
+fi
+
 echo "PASS: malformed URL reports curl error and next request succeeds"
+echo "PASS: POST executes once and Verbose shows its captured trace"

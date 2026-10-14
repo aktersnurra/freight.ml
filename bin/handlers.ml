@@ -393,23 +393,18 @@ let freight_run state =
            Freight_effect.update_scratch loading_buf
              ~name ~filetype:"freight"
              ~lines:[ "Request failed"; msg ]
-         | Ok raw ->
-           (match Freight.Response.parse_curl_output raw request with
+         | Ok output ->
+           (match Freight.Response.parse_curl_output output.stdout request with
             | Error msg ->
               Freight_effect.update_scratch loading_buf
                 ~name ~filetype:"freight"
                 ~lines:[ "Response parse failed"; msg ]
             | Ok response ->
-              let verbose_raw =
-                match Freight_effect.run_curl_verbose invocation with
-                | Ok output -> output
-                | Error msg -> "Verbose output unavailable: " ^ msg
-              in
               let filetype =
                 Freight.Buffer.filetype_of_content_type
                   (Freight.Response.detect_content_type response)
               in
-              record_response state request response verbose_raw loading_buf name;
+              record_response state request response output.stderr loading_buf name;
               let render_lines =
                 Freight.Response.render response @ assertion_lines request response
               in
@@ -495,8 +490,8 @@ let freight_run_all state =
               State.Run_all_failure
                 { line_number; source_buffer; source_window; source_line; request; message; response = None }
               :: !results
-          | Ok raw ->
-            (match Freight.Response.parse_curl_output raw request with
+          | Ok output ->
+            (match Freight.Response.parse_curl_output output.stdout request with
              | Error message ->
                results :=
                  State.Run_all_failure
@@ -517,7 +512,7 @@ let freight_run_all state =
                      }
                    :: !results
                else begin
-                 record_response state request response "" loading_buf name;
+                 record_response state request response output.stderr loading_buf name;
                  match Freight.Assertion.check response request.Freight.Ast.assertions with
                  | failure :: _ ->
                    results :=
@@ -532,7 +527,7 @@ let freight_run_all state =
                  | [] ->
                    results :=
                      State.Run_all_success
-                       { line_number; source_buffer; source_window; source_line; request; response; verbose = "" }
+                       { line_number; source_buffer; source_window; source_line; request; response; verbose = output.stderr }
                      :: !results
                end)
           end;

@@ -1551,12 +1551,30 @@ let test_file_variables_literal _ =
   | Ok request -> assert_equal "https://example.test/{{y}}" request.url
   | Error _ -> assert_failure "could not resolve literal file variable"
 
+let test_file_variables_reject_orphan_metadata _ =
+  List.iter
+    (fun directive ->
+      let source = "@x = y\n" ^ directive ^ "\n###\nGET https://example.test/{{x}}" in
+      let check = function
+        | Error error ->
+          assert_equal 2 error.Freight.Ast.line;
+          assert_equal directive error.snippet
+        | Ok _ -> assert_failure ("discarded orphan metadata: " ^ directive)
+      in
+      check (Freight.Parser.parse_string source);
+      check (Freight.Parser.parse_variables source))
+    [ "# @expect status invalid"; "# @expect status 200"; "# @name login" ];
+  match Freight.Parser.parse_string "@x = y\n# ordinary comment\n###\nGET https://example.test" with
+  | Ok file -> assert_equal 1 (List.length file.requests)
+  | Error error -> assert_failure error.message
+
 let file_variable_tests =
   [ "file variables" >:: test_file_variables
   ; "same-block declarations" >:: test_file_variables_same_block
   ; "literal declaration values" >:: test_file_variables_literal
   ; "variables only" >:: test_file_variables_only
   ; "malformed variables" >:: test_file_variables_malformed
+  ; "orphan request metadata" >:: test_file_variables_reject_orphan_metadata
   ]
 
 let suite =

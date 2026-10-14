@@ -57,13 +57,6 @@ let count_run_curl calls =
       | _ -> count)
     0 calls
 
-let count_run_curl_verbose calls =
-  List.fold_left
-    (fun count -> function
-      | Test_runtime_fake.Run_curl_verbose _ -> count + 1
-      | _ -> count)
-    0 calls
-
 let has_fork calls =
   has_call
     (function Test_runtime_fake.Fork _ -> true | _ -> false)
@@ -183,7 +176,6 @@ let test_freight_run_curl_error _ =
     Test_runtime_fake.run config @@ fun () -> Handlers.freight_run state
   in
   assert_equal 1 (count_run_curl calls);
-  assert_equal 0 (count_run_curl_verbose calls);
   assert_bool "failure shown" (has_update_scratch_line "Request failed" calls);
   assert_bool "curl diagnostic shown" (has_update_scratch_line message calls);
   let config =
@@ -246,20 +238,27 @@ let curl_arg_matches pred calls =
 let ok_response =
   "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{}\n200\n0.010"
 
-let test_freight_run_verbose_error_preserves_response _ =
+let test_freight_run_captures_verbose_once _ =
+  let trace = "> POST /create HTTP/1.1\n< HTTP/1.1 200 OK" in
   let config =
     { Test_runtime_fake.default_config with
-      buffer_lines = [ "GET https://example.test" ]
+      buffer_lines = [ "POST https://example.test/create" ]
     ; curl_result = Ok ok_response
-    ; curl_verbose_result = Error "diagnostic request failed"
+    ; curl_stderr = trace
     }
   in
+  let state = State.create () in
   let (), calls =
-    Test_runtime_fake.run config @@ fun () -> Handlers.freight_run (State.create ())
+    Test_runtime_fake.run config @@ fun () -> Handlers.freight_run state
   in
+  assert_equal 1 (count_run_curl calls);
   assert_bool "successful response is rendered" (has_update_scratch_line "HTTP 200 OK · 10 ms" calls);
-  assert_bool "diagnostic failure is not a request failure"
-    (not (has_update_scratch_line "Request failed" calls))
+  let (), calls =
+    Test_runtime_fake.run config @@ fun () -> Handlers.freight_view state "Verbose"
+  in
+  assert_equal 0 (count_run_curl calls);
+  assert_bool "verbose view uses the captured request"
+    (has_update_scratch_line "> POST /create HTTP/1.1" calls)
 
 let test_freight_run_all_curl_error _ =
   let message = "curl: (3) URL rejected: Malformed input to a URL function" in
@@ -561,7 +560,7 @@ let test_freight_run_save_overwrite_writes _ =
     ; existing_files = [ "/tmp/work/./out.bin" ]
     ; file_sizes = [ ("/tmp/work/./out.bin", 5926) ]
     ; curl_result = Ok curl_output
-    ; curl_verbose_result = Ok ""
+    ; curl_stderr = ""
     ; fork_mode = `Run_immediately
     }
   in
@@ -599,7 +598,7 @@ let test_freight_run_save_derives_filename _ =
     ; buffer_dir = Some "/tmp/work"
     ; cursor = { Freight_effect.Cursor.row = 0; col = 0 }
     ; curl_result = Ok curl_output
-    ; curl_verbose_result = Ok ""
+    ; curl_stderr = ""
     ; write_file_result = Ok 0
     ; fork_mode = `Run_immediately
     }
@@ -640,7 +639,7 @@ let test_freight_run_all_runs_every_request _ =
         ; "{\"message\": \"hello from freight\"}"
         ]
     ; curl_result = Ok curl_output
-    ; curl_verbose_result = Ok curl_output
+    ; curl_stderr = curl_output
     ; fork_mode = `Run_immediately
     }
   in
@@ -649,7 +648,6 @@ let test_freight_run_all_runs_every_request _ =
       Handlers.freight_run_all (State.create ())
   in
   assert_equal 2 (count_run_curl calls);
-  assert_equal 0 (count_run_curl_verbose calls);
   assert_bool "second request uses absolute url"
     (has_call
        (function
@@ -1342,7 +1340,7 @@ let suite =
     ; "freight_help includes run all" >:: test_freight_help_includes_run_all
     ; "freight_run no request" >:: test_freight_run_no_request
     ; "freight_run curl error" >:: test_freight_run_curl_error
-    ; "verbose failure preserves response" >:: test_freight_run_verbose_error_preserves_response
+    ; "single request captures verbose output" >:: test_freight_run_captures_verbose_once
     ; "run-all curl error" >:: test_freight_run_all_curl_error
     ; "freight_run success" >:: test_freight_run_success
     ; "freight_run assertion pass and fail" >:: test_freight_run_assertion_pass_and_fail

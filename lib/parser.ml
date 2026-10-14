@@ -67,10 +67,21 @@ let prepare_source source =
       (match prepare_block env false [] start block with
        | Error error -> Error error
        | Ok (env, declared, has_request, block) ->
-         let blocks =
-           if declared && not has_request then blocks else (start, block) :: blocks
-         in
-         loop env blocks rest)
+         if declared && not has_request then
+           let metadata =
+             block
+             |> List.mapi (fun offset line -> (start + offset, line))
+             |> List.find_opt (fun (_, line) ->
+                  let trimmed = trim line in
+                  starts_with ~prefix:"# @name" trimmed
+                  || starts_with ~prefix:"# @expect" trimmed)
+           in
+           (match metadata with
+            | Some (line, snippet) ->
+              make_error ~line ~snippet
+                "request metadata requires a request in the same ### block"
+            | None -> loop env blocks rest)
+         else loop env ((start, block) :: blocks) rest)
   in
   loop Env.empty [] (split_lines source |> split_blocks)
 

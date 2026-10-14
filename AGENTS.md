@@ -69,6 +69,9 @@ failures, so `Ran: N tests ... OK` means everything passed.
   the hard way — a bracket `[abc]` once took the process down.)
 - **dune ignores directories starting with `_`.** Don't scaffold throwaway dune
   targets in `_foo/`; dune won't see them. Use a normal name and delete after.
+- **One curl process per request.** `Run_curl` returns stdout and stderr from
+  the same execution. Verbose views reuse the captured stderr; never replay a
+  request for diagnostics (POST/PUT/DELETE may mutate server state).
 - **Effects come in pairs.** Any new `Freight_effect` effect needs: the variant +
   wrapper in `freight_effect.ml`/`.mli`, a real handler in `freight_runtime.ml`, AND
   a fake handler + config field in `test/test_runtime_fake.ml`. Miss the fake and

@@ -621,7 +621,7 @@ let assert_args expected actual =
 
 let test_golden_curl_inline_body _ =
   assert_args
-    [ "-i"; "-s"; "-X"; "POST"; "-H"; "Content-Type: application/json"
+    [ "-i"; "-s"; "-S"; "-X"; "POST"; "-H"; "Content-Type: application/json"
     ; "--data-binary"; {|{"x":1}|}; "https://api.test/x"
     ; "-w"; "\n%{http_code}\n%{time_total}" ]
     (curl_args ~method_:Freight.Ast.Post
@@ -631,27 +631,27 @@ let test_golden_curl_inline_body _ =
 
 let test_golden_curl_get_no_body _ =
   assert_args
-    [ "-i"; "-s"; "-X"; "GET"; "https://api.test/"
+    [ "-i"; "-s"; "-S"; "-X"; "GET"; "https://api.test/"
     ; "-w"; "\n%{http_code}\n%{time_total}" ]
     (curl_args ~url:"https://api.test/" Freight.Ast.Body_none)
 
 let test_golden_curl_file_body_post _ =
   assert_args
-    [ "-i"; "-s"; "-X"; "POST"; "--data-binary"; "@payload.json"
+    [ "-i"; "-s"; "-S"; "-X"; "POST"; "--data-binary"; "@payload.json"
     ; "https://api.test/x"; "-w"; "\n%{http_code}\n%{time_total}" ]
     (curl_args ~method_:Freight.Ast.Post ~url:"https://api.test/x"
        (Freight.Ast.Body_file "payload.json"))
 
 let test_golden_curl_file_body_put _ =
   assert_args
-    [ "-i"; "-s"; "-X"; "PUT"; "-T"; "payload.json"
+    [ "-i"; "-s"; "-S"; "-X"; "PUT"; "-T"; "payload.json"
     ; "https://api.test/x"; "-w"; "\n%{http_code}\n%{time_total}" ]
     (curl_args ~method_:Freight.Ast.Put ~url:"https://api.test/x"
        (Freight.Ast.Body_file "payload.json"))
 
 let test_golden_curl_multipart _ =
   assert_args
-    [ "-i"; "-s"; "-X"; "POST"
+    [ "-i"; "-s"; "-S"; "-X"; "POST"
     ; "-F"; "file=@./f.xlsx;type=application/vnd.ms-excel;filename=f.xlsx"
     ; "-F"; "note=hello"
     ; "https://api.test/imports"; "-w"; "\n%{http_code}\n%{time_total}" ]
@@ -670,7 +670,7 @@ let test_golden_curl_multipart _ =
 
 let test_golden_curl_save_explicit_path _ =
   assert_args
-    [ "-D"; "-"; "-o"; "./out.bin"; "-s"; "-X"; "GET"
+    [ "-D"; "-"; "-o"; "./out.bin"; "-s"; "-S"; "-X"; "GET"
     ; "https://api.test/dl"; "-w"; "\n%{http_code}\n%{time_total}" ]
     (curl_args ~url:"https://api.test/dl"
        ~save_to:(Some { Freight.Ast.save_path = Some "./out.bin"; overwrite = false })
@@ -678,7 +678,7 @@ let test_golden_curl_save_explicit_path _ =
 
 let test_golden_curl_save_no_path_uses_i _ =
   assert_args
-    [ "-i"; "-s"; "-X"; "GET"; "https://api.test/dl"
+    [ "-i"; "-s"; "-S"; "-X"; "GET"; "https://api.test/dl"
     ; "-w"; "\n%{http_code}\n%{time_total}" ]
     (curl_args ~url:"https://api.test/dl"
        ~save_to:(Some { Freight.Ast.save_path = None; overwrite = false })

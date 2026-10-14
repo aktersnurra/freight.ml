@@ -388,20 +388,23 @@ let freight_run state =
       in
       set_buf_keymaps loading_buf;
       Freight_effect.fork "FreightRun" @@ fun () ->
-        let run_result = Freight_effect.run_curl invocation in
-        let verbose_result = Freight_effect.run_curl_verbose invocation in
-        (match run_result, verbose_result with
-         | Error msg, _ | _, Error msg ->
+        (match Freight_effect.run_curl invocation with
+         | Error msg ->
            Freight_effect.update_scratch loading_buf
              ~name ~filetype:"freight"
              ~lines:[ "Request failed"; msg ]
-         | Ok raw, Ok verbose_raw ->
+         | Ok raw ->
            (match Freight.Response.parse_curl_output raw request with
             | Error msg ->
               Freight_effect.update_scratch loading_buf
                 ~name ~filetype:"freight"
                 ~lines:[ "Response parse failed"; msg ]
             | Ok response ->
+              let verbose_raw =
+                match Freight_effect.run_curl_verbose invocation with
+                | Ok output -> output
+                | Error msg -> "Verbose output unavailable: " ^ msg
+              in
               let filetype =
                 Freight.Buffer.filetype_of_content_type
                   (Freight.Response.detect_content_type response)

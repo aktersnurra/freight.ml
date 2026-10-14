@@ -170,23 +170,30 @@ let test_freight_run_no_request _ =
     (not (has_run_curl calls))
 
 let test_freight_run_curl_error _ =
+  let message = "curl: (3) URL rejected: Malformed input to a URL function" in
   let config =
     { Test_runtime_fake.default_config with
-      buffer_lines =
-        [ "# @name test"
-        ; "GET https://example.com"
-        ]
-    ; cursor = { Freight_effect.Cursor.row = 1; col = 0 }
-    ; curl_result = Error "connection refused"
+      buffer_lines = [ "GET example.com/ y" ]
+    ; curl_result = Error message
     ; fork_mode = `Run_immediately
     }
   in
+  let state = State.create () in
   let (), calls =
-    Test_runtime_fake.run config @@ fun () ->
-      Handlers.freight_run (State.create ())
+    Test_runtime_fake.run config @@ fun () -> Handlers.freight_run state
   in
-  assert_bool "curl was run" (has_run_curl calls);
-  assert_bool "scratch updated with error" (has_update_scratch calls)
+  assert_equal 1 (count_run_curl calls);
+  assert_equal 0 (count_run_curl_verbose calls);
+  assert_bool "failure shown" (has_update_scratch_line "Request failed" calls);
+  assert_bool "curl diagnostic shown" (has_update_scratch_line message calls);
+  let config =
+    { config with buffer_lines = [ "GET https://example.test" ];
+                  curl_result = Ok "HTTP/1.1 200 OK\r\n\r\nhello\n200\n0.010" }
+  in
+  let (), calls =
+    Test_runtime_fake.run config @@ fun () -> Handlers.freight_run state
+  in
+  assert_bool "next request succeeds" (has_update_scratch_line "hello" calls)
 
 let test_freight_run_assertion_pass_and_fail _ =
   let curl_output =
@@ -238,6 +245,35 @@ let curl_arg_matches pred calls =
 
 let ok_response =
   "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{}\n200\n0.010"
+
+let test_freight_run_verbose_error_preserves_response _ =
+  let config =
+    { Test_runtime_fake.default_config with
+      buffer_lines = [ "GET https://example.test" ]
+    ; curl_result = Ok ok_response
+    ; curl_verbose_result = Error "diagnostic request failed"
+    }
+  in
+  let (), calls =
+    Test_runtime_fake.run config @@ fun () -> Handlers.freight_run (State.create ())
+  in
+  assert_bool "successful response is rendered" (has_update_scratch_line "HTTP 200 OK · 10 ms" calls);
+  assert_bool "diagnostic failure is not a request failure"
+    (not (has_update_scratch_line "Request failed" calls))
+
+let test_freight_run_all_curl_error _ =
+  let message = "curl: (3) URL rejected: Malformed input to a URL function" in
+  let config =
+    { Test_runtime_fake.default_config with
+      buffer_lines = [ "GET example.com/ y" ]
+    ; curl_result = Error message
+    }
+  in
+  let state = State.create () in
+  let (), _ = Test_runtime_fake.run config (fun () -> Handlers.freight_run_all state) in
+  let (), calls = Test_runtime_fake.run config (fun () -> Handlers.freight_view_run_all state 4) in
+  assert_bool "run-all failure detail retains curl diagnostic"
+    (has_update_scratch_line message calls)
 
 let test_freight_run_dollar_env _ =
   let config =
@@ -1306,6 +1342,8 @@ let suite =
     ; "freight_help includes run all" >:: test_freight_help_includes_run_all
     ; "freight_run no request" >:: test_freight_run_no_request
     ; "freight_run curl error" >:: test_freight_run_curl_error
+    ; "verbose failure preserves response" >:: test_freight_run_verbose_error_preserves_response
+    ; "run-all curl error" >:: test_freight_run_all_curl_error
     ; "freight_run success" >:: test_freight_run_success
     ; "freight_run assertion pass and fail" >:: test_freight_run_assertion_pass_and_fail
     ; "freight_run $env" >:: test_freight_run_dollar_env

@@ -93,3 +93,42 @@ grep -q "e2e-abc" "$out" || { echo "FAIL: expected body token 'e2e-abc'" >&2; fa
 if [ "$fail" = 1 ]; then echo "--- response buffer ---" >&2; cat "$out" >&2; exit 1; fi
 
 echo "PASS: :FreightRun end-to-end (200 + body) through headless nvim"
+
+# Exercise the real Eio failure path, then reuse the same plugin process.
+cat > "$workdir/failure.lua" <<LUA
+local ok, err = pcall(function()
+  vim.cmd("edit $workdir/test.http")
+  local source = vim.api.nvim_get_current_buf()
+  vim.api.nvim_buf_set_lines(source, 0, -1, false, {
+    "GET example.com/ y",
+    "###",
+    "GET http://127.0.0.1:$port/ping",
+  })
+  local function run(row, expected)
+    vim.api.nvim_set_current_buf(source)
+    vim.api.nvim_win_set_cursor(0, {row, 0})
+    vim.cmd("FreightRun")
+    assert(vim.wait(6000, function()
+      for _, b in ipairs(vim.api.nvim_list_bufs()) do
+        if vim.api.nvim_buf_is_valid(b)
+            and vim.api.nvim_buf_get_name(b):match("freight://") then
+          local text = table.concat(vim.api.nvim_buf_get_lines(b, 0, -1, false), "\n")
+          if text:find(expected, 1, true) then return true end
+        end
+      end
+      return false
+    end), "response did not contain: " .. expected)
+  end
+  run(1, "curl: (3)")
+  run(3, "e2e-abc")
+end)
+if not ok then
+  vim.api.nvim_err_writeln(tostring(err))
+  vim.cmd("cquit 1")
+end
+LUA
+
+nvim --headless -u "$workdir/init.lua" \
+  -c "luafile $workdir/failure.lua" -c "qa!"
+
+echo "PASS: malformed URL reports curl error and next request succeeds"

@@ -24,12 +24,16 @@ let decode_cursor = function
     { Freight_effect.Cursor.row = 0; col = 0 }
 
 let run_curl ~proc_mgr invocation =
+  let stderr_buf = Buffer.create 4096 in
+  let stderr_sink = Eio.Flow.buffer_sink stderr_buf in
   match
-    Eio.Process.parse_out proc_mgr Eio.Buf_read.take_all
+    Eio.Process.parse_out ~stderr:stderr_sink proc_mgr Eio.Buf_read.take_all
       ("curl" :: invocation.Freight.Executor.args)
   with
   | output -> Ok output
-  | exception exn -> Error (Printexc.to_string exn)
+  | exception exn ->
+    let diagnostic = String.trim (Buffer.contents stderr_buf) in
+    Error (if diagnostic = "" then Printexc.to_string exn else diagnostic)
 
 let run_curl_verbose ~proc_mgr invocation =
   let stderr_buf = Buffer.create 4096 in

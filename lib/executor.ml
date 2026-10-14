@@ -52,7 +52,7 @@ let to_curl ?cookie_jar request =
   let headers = List.concat_map header_arg request.headers in
   let args =
     capture_args request.save_to @ cookie_args cookie_jar
-    @ [ "-s"; "-X"; method_ ] @ headers
+    @ [ "-s"; "-S"; "-X"; method_ ] @ headers
     @ body_args request.method_ request.body
     @ [ request.url; "-w"; "\n%{http_code}\n%{time_total}" ]
   in

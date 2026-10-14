@@ -166,8 +166,40 @@ Authorization: Bearer {{login.response.body.token}}
 
 - `###` separates requests within a file
 - `# @name <name>` tags a request for chaining
-- `{{KEY}}` substitutes values from `.env` files
+- `@KEY = value` declares a file variable
+- `{{KEY}}` substitutes file variables or values from `.env` files
 - `< path/to/file.json` sends a file body
+
+The Verbose view uses the trace captured during the original request; opening
+it does not resend the request.
+
+### File variables
+
+Declare variables before the first request, including before the first `###`:
+
+```http
+@baseUrl = https://api.example.com
+@token = example-token
+
+###
+GET {{baseUrl}}/profile
+Authorization: Bearer {{token}}
+
+###
+GET {{baseUrl}}/health
+```
+
+Declarations can also appear in the leading metadata of later request blocks.
+They apply to the whole file; the last declaration of a name wins. File variables
+take precedence over `.env` and bare OS environment variables, and are reloaded
+from the current buffer for Run, RunAll, and Inspect. They do not carry over into
+other buffers. Declaration lines inside request bodies remain body text. Request metadata
+(`# @name` or `# @expect`) must share a block with a request; it is rejected
+in a declarations-only block.
+
+Names may contain letters, digits, `_`, `-`, and `.`. Values are trimmed, may be
+empty, and may contain `=`. Like `.env` values, they are literal: substitution is
+a single pass, so references inside declaration values are not expanded.
 
 ### Multipart uploads
 
@@ -269,7 +301,7 @@ Beyond `.env` files, `{{…}}` also resolves:
 - `{{$randomInt:a:b}}` — a random integer in `[a, b)`
 
 Precedence, first match wins: generated values → `$env` → response chaining →
-`.env` files → OS-environment fallback. A reference that resolves nowhere is
+file variables → `.env` files → OS-environment fallback. A reference that resolves nowhere is
 reported as an unresolved variable and the request fails fast.
 
 ## Cookies

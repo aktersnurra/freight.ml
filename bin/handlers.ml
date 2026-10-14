@@ -70,7 +70,7 @@ let generated_env : Freight.Generated.env =
   }
 
 (* Precedence (first wins): generated values, then $env, then response-chaining,
-   then .env, then a bare-{{VAR}} OS-environment fallback. *)
+   then file variables over .env, then a bare-{{VAR}} OS-environment fallback. *)
 let resolver_sources env responses =
   [ Freight.Generated.source generated_env
   ; dollar_env_source
@@ -79,13 +79,19 @@ let resolver_sources env responses =
   ; os_env_source
   ]
 
-let build_resolver state buf =
-  let env = resolve_env state buf in
+let build_resolver state buf variables =
+  let env =
+    Freight.Env.overlay ~base:(resolve_env state buf)
+      ~over:(Freight.Env.of_list variables)
+  in
   Freight.Resolver.make (resolver_sources env state.State.responses)
 
 let resolve_request state source cursor_line buf =
-  let resolver = build_resolver state buf in
-  Freight.Resolve.at_cursor_r ~source ~cursor_line ~resolver
+  match Freight.Parser.parse_variables source with
+  | Error error -> Error (`Parse error)
+  | Ok variables ->
+    let resolver = build_resolver state buf variables in
+    Freight.Resolve.at_cursor_r ~source ~cursor_line ~resolver
 
 let set_buf_keymaps buf =
   Freight_effect.set_keymap buf ~key:"q" ~command:":close<CR>";
@@ -382,15 +388,13 @@ let freight_run state =
       in
       set_buf_keymaps loading_buf;
       Freight_effect.fork "FreightRun" @@ fun () ->
-        let run_result = Freight_effect.run_curl invocation in
-        let verbose_result = Freight_effect.run_curl_verbose invocation in
-        (match run_result, verbose_result with
-         | Error msg, _ | _, Error msg ->
+        (match Freight_effect.run_curl invocation with
+         | Error msg ->
            Freight_effect.update_scratch loading_buf
              ~name ~filetype:"freight"
              ~lines:[ "Request failed"; msg ]
-         | Ok raw, Ok verbose_raw ->
-           (match Freight.Response.parse_curl_output raw request with
+         | Ok output ->
+           (match Freight.Response.parse_curl_output output.stdout request with
             | Error msg ->
               Freight_effect.update_scratch loading_buf
                 ~name ~filetype:"freight"
@@ -400,7 +404,7 @@ let freight_run state =
                 Freight.Buffer.filetype_of_content_type
                   (Freight.Response.detect_content_type response)
               in
-              record_response state request response verbose_raw loading_buf name;
+              record_response state request response output.stderr loading_buf name;
               let render_lines =
                 Freight.Response.render response @ assertion_lines request response
               in
@@ -429,7 +433,10 @@ let freight_run_all state =
     set_buf_keymaps scratch_buf
   | Ok { Freight.Ast.requests = []; _ } ->
     show_error_state state "No requests found in buffer."
-  | Ok _file ->
+  | Ok file ->
+    let base_env =
+      Freight.Env.overlay ~base:base_env ~over:(Freight.Env.of_list file.variables)
+    in
     (* Keep the requests unsubstituted here; each is resolved lazily inside the
        run loop against the accumulating env so that later requests can see the
        response variables injected by earlier ones. *)
@@ -457,7 +464,7 @@ let freight_run_all state =
           let line_number = index + 1 in
           let source_buffer = buf in
           (* Same source precedence as single-run: generated / $env / chaining /
-             .env / OS fallback. The store accrues earlier responses this run. *)
+             file variables / .env / OS fallback. The store accrues earlier responses this run. *)
           let resolver =
             Freight.Resolver.make (resolver_sources base_env state.State.responses)
           in
@@ -483,8 +490,8 @@ let freight_run_all state =
               State.Run_all_failure
                 { line_number; source_buffer; source_window; source_line; request; message; response = None }
               :: !results
-          | Ok raw ->
-            (match Freight.Response.parse_curl_output raw request with
+          | Ok output ->
+            (match Freight.Response.parse_curl_output output.stdout request with
              | Error message ->
                results :=
                  State.Run_all_failure
@@ -505,7 +512,7 @@ let freight_run_all state =
                      }
                    :: !results
                else begin
-                 record_response state request response "" loading_buf name;
+                 record_response state request response output.stderr loading_buf name;
                  match Freight.Assertion.check response request.Freight.Ast.assertions with
                  | failure :: _ ->
                    results :=
@@ -520,7 +527,7 @@ let freight_run_all state =
                  | [] ->
                    results :=
                      State.Run_all_success
-                       { line_number; source_buffer; source_window; source_line; request; response; verbose = "" }
+                       { line_number; source_buffer; source_window; source_line; request; response; verbose = output.stderr }
                      :: !results
                end)
           end;

@@ -57,13 +57,6 @@ let count_run_curl calls =
       | _ -> count)
     0 calls
 
-let count_run_curl_verbose calls =
-  List.fold_left
-    (fun count -> function
-      | Test_runtime_fake.Run_curl_verbose _ -> count + 1
-      | _ -> count)
-    0 calls
-
 let has_fork calls =
   has_call
     (function Test_runtime_fake.Fork _ -> true | _ -> false)
@@ -170,23 +163,29 @@ let test_freight_run_no_request _ =
     (not (has_run_curl calls))
 
 let test_freight_run_curl_error _ =
+  let message = "curl: (3) URL rejected: Malformed input to a URL function" in
   let config =
     { Test_runtime_fake.default_config with
-      buffer_lines =
-        [ "# @name test"
-        ; "GET https://example.com"
-        ]
-    ; cursor = { Freight_effect.Cursor.row = 1; col = 0 }
-    ; curl_result = Error "connection refused"
+      buffer_lines = [ "GET example.com/ y" ]
+    ; curl_result = Error message
     ; fork_mode = `Run_immediately
     }
   in
+  let state = State.create () in
   let (), calls =
-    Test_runtime_fake.run config @@ fun () ->
-      Handlers.freight_run (State.create ())
+    Test_runtime_fake.run config @@ fun () -> Handlers.freight_run state
   in
-  assert_bool "curl was run" (has_run_curl calls);
-  assert_bool "scratch updated with error" (has_update_scratch calls)
+  assert_equal 1 (count_run_curl calls);
+  assert_bool "failure shown" (has_update_scratch_line "Request failed" calls);
+  assert_bool "curl diagnostic shown" (has_update_scratch_line message calls);
+  let config =
+    { config with buffer_lines = [ "GET https://example.test" ];
+                  curl_result = Ok "HTTP/1.1 200 OK\r\n\r\nhello\n200\n0.010" }
+  in
+  let (), calls =
+    Test_runtime_fake.run config @@ fun () -> Handlers.freight_run state
+  in
+  assert_bool "next request succeeds" (has_update_scratch_line "hello" calls)
 
 let test_freight_run_assertion_pass_and_fail _ =
   let curl_output =
@@ -238,6 +237,42 @@ let curl_arg_matches pred calls =
 
 let ok_response =
   "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{}\n200\n0.010"
+
+let test_freight_run_captures_verbose_once _ =
+  let trace = "> POST /create HTTP/1.1\n< HTTP/1.1 200 OK" in
+  let config =
+    { Test_runtime_fake.default_config with
+      buffer_lines = [ "POST https://example.test/create" ]
+    ; curl_result = Ok ok_response
+    ; curl_stderr = trace
+    }
+  in
+  let state = State.create () in
+  let (), calls =
+    Test_runtime_fake.run config @@ fun () -> Handlers.freight_run state
+  in
+  assert_equal 1 (count_run_curl calls);
+  assert_bool "successful response is rendered" (has_update_scratch_line "HTTP 200 OK · 10 ms" calls);
+  let (), calls =
+    Test_runtime_fake.run config @@ fun () -> Handlers.freight_view state "Verbose"
+  in
+  assert_equal 0 (count_run_curl calls);
+  assert_bool "verbose view uses the captured request"
+    (has_update_scratch_line "> POST /create HTTP/1.1" calls)
+
+let test_freight_run_all_curl_error _ =
+  let message = "curl: (3) URL rejected: Malformed input to a URL function" in
+  let config =
+    { Test_runtime_fake.default_config with
+      buffer_lines = [ "GET example.com/ y" ]
+    ; curl_result = Error message
+    }
+  in
+  let state = State.create () in
+  let (), _ = Test_runtime_fake.run config (fun () -> Handlers.freight_run_all state) in
+  let (), calls = Test_runtime_fake.run config (fun () -> Handlers.freight_view_run_all state 4) in
+  assert_bool "run-all failure detail retains curl diagnostic"
+    (has_update_scratch_line message calls)
 
 let test_freight_run_dollar_env _ =
   let config =
@@ -525,7 +560,7 @@ let test_freight_run_save_overwrite_writes _ =
     ; existing_files = [ "/tmp/work/./out.bin" ]
     ; file_sizes = [ ("/tmp/work/./out.bin", 5926) ]
     ; curl_result = Ok curl_output
-    ; curl_verbose_result = Ok ""
+    ; curl_stderr = ""
     ; fork_mode = `Run_immediately
     }
   in
@@ -563,7 +598,7 @@ let test_freight_run_save_derives_filename _ =
     ; buffer_dir = Some "/tmp/work"
     ; cursor = { Freight_effect.Cursor.row = 0; col = 0 }
     ; curl_result = Ok curl_output
-    ; curl_verbose_result = Ok ""
+    ; curl_stderr = ""
     ; write_file_result = Ok 0
     ; fork_mode = `Run_immediately
     }
@@ -604,7 +639,7 @@ let test_freight_run_all_runs_every_request _ =
         ; "{\"message\": \"hello from freight\"}"
         ]
     ; curl_result = Ok curl_output
-    ; curl_verbose_result = Ok curl_output
+    ; curl_stderr = curl_output
     ; fork_mode = `Run_immediately
     }
   in
@@ -613,7 +648,6 @@ let test_freight_run_all_runs_every_request _ =
       Handlers.freight_run_all (State.create ())
   in
   assert_equal 2 (count_run_curl calls);
-  assert_equal 0 (count_run_curl_verbose calls);
   assert_bool "second request uses absolute url"
     (has_call
        (function
@@ -1256,15 +1290,58 @@ let test_freight_view_history _ =
   assert_bool "shows response scratch"
     (has_show_scratch ~name:"freight://response/r1" calls)
 
+let test_file_variables_commands _ =
+  let config =
+    { Test_runtime_fake.default_config with
+      buffer_lines =
+        [ "@x = file"; "###"; "POST https://example.test/{{x}}"
+        ; "X-Value: {{x}}"; ""; "{{x}}"; "###"
+        ; "GET https://example.test/{{x}}" ]
+    ; cursor = { Freight_effect.Cursor.row = 2; col = 0 }
+    ; buffer_dir = Some "/project"
+    ; env = Freight.Env.of_list [ "x", "dotenv" ]
+    ; env_vars = [ "x", "shell" ]
+    ; curl_result = Ok ok_response
+    }
+  in
+  let state = State.create () in
+  let (), calls = Test_runtime_fake.run config (fun () -> Handlers.freight_run state) in
+  assert_equal 1 (count_run_curl calls);
+  List.iter
+    (fun value -> assert_bool ("curl contains " ^ value) (curl_arg_matches ((=) value) calls))
+    [ "https://example.test/file"; "X-Value: file"; "file" ];
+  let (), calls = Test_runtime_fake.run config (fun () -> Handlers.freight_run_all state) in
+  assert_equal 2 (count_run_curl calls);
+  assert_bool "run-all substitutes every URL"
+    (List.for_all (function
+       | Test_runtime_fake.Run_curl inv -> List.mem "https://example.test/file" inv.args
+       | _ -> true) calls);
+  let (), calls = Test_runtime_fake.run config (fun () -> Handlers.freight_inspect state) in
+  assert_bool "inspect substitutes file variables"
+    (has_call (function
+       | Test_runtime_fake.Update_scratch (_, view)
+       | Test_runtime_fake.Show_scratch view ->
+         view.name = "freight://inspect"
+         && List.exists (contains ~needle:"https://example.test/file") view.lines
+       | _ -> false) calls);
+  let config = { config with buffer_lines = [ "GET https://example.test/{{x}}" ];
+                             cursor = { Freight_effect.Cursor.row = 0; col = 0 } } in
+  let (), calls = Test_runtime_fake.run config (fun () -> Handlers.freight_run state) in
+  assert_bool "file variables do not leak into subsequent buffers"
+    (curl_arg_matches ((=) "https://example.test/dotenv") calls)
+
 let suite =
   "Handlers" >:::
-    [ "freight_open" >:: test_freight_open
+    [ "file variables across commands" >:: test_file_variables_commands
+    ; "freight_open" >:: test_freight_open
     ; "freight_env" >:: test_freight_env
     ; "freight_inspect parse error" >:: test_freight_inspect_parse_error
     ; "freight_inspect valid" >:: test_freight_inspect_valid
     ; "freight_help includes run all" >:: test_freight_help_includes_run_all
     ; "freight_run no request" >:: test_freight_run_no_request
     ; "freight_run curl error" >:: test_freight_run_curl_error
+    ; "single request captures verbose output" >:: test_freight_run_captures_verbose_once
+    ; "run-all curl error" >:: test_freight_run_all_curl_error
     ; "freight_run success" >:: test_freight_run_success
     ; "freight_run assertion pass and fail" >:: test_freight_run_assertion_pass_and_fail
     ; "freight_run $env" >:: test_freight_run_dollar_env

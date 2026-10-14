@@ -24,25 +24,24 @@ let decode_cursor = function
     { Freight_effect.Cursor.row = 0; col = 0 }
 
 let run_curl ~proc_mgr invocation =
-  match
-    Eio.Process.parse_out proc_mgr Eio.Buf_read.take_all
-      ("curl" :: invocation.Freight.Executor.args)
-  with
-  | output -> Ok output
-  | exception exn -> Error (Printexc.to_string exn)
-
-let run_curl_verbose ~proc_mgr invocation =
   let stderr_buf = Buffer.create 4096 in
   let stderr_sink = Eio.Flow.buffer_sink stderr_buf in
-  let args = "-v" :: invocation.Freight.Executor.args in
   match
     Eio.Process.parse_out ~stderr:stderr_sink proc_mgr Eio.Buf_read.take_all
-      ("curl" :: args)
+      ("curl" :: "-v" :: invocation.Freight.Executor.args)
   with
-  | _stdout -> Ok (Buffer.contents stderr_buf)
+  | stdout -> Ok { Freight_effect.stdout; stderr = Buffer.contents stderr_buf }
   | exception exn ->
-    if Buffer.length stderr_buf > 0 then Ok (Buffer.contents stderr_buf)
-    else Error (Printexc.to_string exn)
+    (* Keep the useful curl error without dumping the verbose request headers
+       into the failure view. Both streams came from this one process. *)
+    let diagnostic =
+      Buffer.contents stderr_buf
+      |> String.split_on_char '\n'
+      |> List.map String.trim
+      |> List.filter (String.starts_with ~prefix:"curl:")
+      |> String.concat "\n"
+    in
+    Error (if diagnostic = "" then Printexc.to_string exn else diagnostic)
 
 let rec run : type a. proc_mgr:_ -> sw:_ -> rpc:_ -> (unit -> a) -> a =
   fun ~proc_mgr ~sw ~rpc f ->
@@ -101,10 +100,6 @@ let rec run : type a. proc_mgr:_ -> sw:_ -> rpc:_ -> (unit -> a) -> a =
           | Freight_effect.Run_curl invocation ->
             Some (fun (k : (a, _) Effect.Deep.continuation) ->
               let result = run_curl ~proc_mgr invocation in
-              Effect.Deep.continue k result)
-          | Freight_effect.Run_curl_verbose invocation ->
-            Some (fun (k : (a, _) Effect.Deep.continuation) ->
-              let result = run_curl_verbose ~proc_mgr invocation in
               Effect.Deep.continue k result)
           | Freight_effect.Notify (level, msg) ->
             Some (fun (k : (a, _) Effect.Deep.continuation) ->

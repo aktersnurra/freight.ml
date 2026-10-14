@@ -69,6 +69,9 @@ failures, so `Ran: N tests ... OK` means everything passed.
   the hard way — a bracket `[abc]` once took the process down.)
 - **dune ignores directories starting with `_`.** Don't scaffold throwaway dune
   targets in `_foo/`; dune won't see them. Use a normal name and delete after.
+- **One curl process per request.** `Run_curl` returns stdout and stderr from
+  the same execution. Verbose views reuse the captured stderr; never replay a
+  request for diagnostics (POST/PUT/DELETE may mutate server state).
 - **Effects come in pairs.** Any new `Freight_effect` effect needs: the variant +
   wrapper in `freight_effect.ml`/`.mli`, a real handler in `freight_runtime.ml`, AND
   a fake handler + config field in `test/test_runtime_fake.ml`. Miss the fake and
@@ -102,8 +105,12 @@ for single-run and the run-all loop):
    `data.items[0].id`, `.n` or `[n]`) and `{{name.response.headers.<h>}}`
    (case-insensitive). Lives in `State.responses`, updated by `record_response`.
    Do **not** reintroduce flat-env injection of `*.response.*` keys.
-4. **`.env`** — `Env.source` (`lib/env.ml`): plain `.env`/`.env.<active>`/`.env.local`.
-5. **OS fallback** — `os_env_source` (bin): a bare `{{VAR}}` absent above falls
+4. **File variables** — `@name = value` in request preambles, including a
+   declarations-only block before the first `###`. Parsed into `Ast.http_file.variables`,
+   overlaid on the env for each command; never stored in session state. Last declaration
+   wins across the file; values remain literal under single-pass substitution.
+5. **`.env`** — `Env.source` (`lib/env.ml`): plain `.env`/`.env.<active>`/`.env.local`.
+6. **OS fallback** — `os_env_source` (bin): a bare `{{VAR}}` absent above falls
    back to the OS environment. Last, so `.env` wins over the shell.
 
 ### Pure lib vs. effectful bin — the split that matters
@@ -156,9 +163,7 @@ error with a line number.
 - **Commits are GPG-signed.** In a sandbox, `jj describe`/`jj new`/`jj git push` may
   fail with a GPG/`No secret key`/`.gnupg` permission error — that's the sandbox, not
   a real failure. Retry the exact command with the sandbox disabled.
-- Conventional Commits (`feat(scope):`, `fix(scope):`, `refactor(scope):`). End
-  commit messages with:
-  `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`
+- Conventional Commits (`feat(scope):`, `fix(scope):`, `refactor(scope):`).
 
 ## Running it in Neovim (why "my fix didn't work")
 

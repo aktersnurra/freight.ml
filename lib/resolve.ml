@@ -76,4 +76,8 @@ let at_cursor_r ~source ~cursor_line ~resolver =
     Ok (Ast.apply_host_header (substitute_request_r resolver request))
 
 let at_cursor ~source ~cursor_line ~env =
-  at_cursor_r ~source ~cursor_line ~resolver:(Resolver.make [ Env.source env ])
+  match Parser.parse_variables source with
+  | Error error -> Error (`Parse error)
+  | Ok variables ->
+    let env = Env.overlay ~base:env ~over:(Env.of_list variables) in
+    at_cursor_r ~source ~cursor_line ~resolver:(Resolver.make [ Env.source env ])

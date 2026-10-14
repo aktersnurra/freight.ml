@@ -621,7 +621,7 @@ let assert_args expected actual =
 
 let test_golden_curl_inline_body _ =
   assert_args
-    [ "-i"; "-s"; "-X"; "POST"; "-H"; "Content-Type: application/json"
+    [ "-i"; "-s"; "-S"; "-X"; "POST"; "-H"; "Content-Type: application/json"
     ; "--data-binary"; {|{"x":1}|}; "https://api.test/x"
     ; "-w"; "\n%{http_code}\n%{time_total}" ]
     (curl_args ~method_:Freight.Ast.Post
@@ -631,27 +631,27 @@ let test_golden_curl_inline_body _ =
 
 let test_golden_curl_get_no_body _ =
   assert_args
-    [ "-i"; "-s"; "-X"; "GET"; "https://api.test/"
+    [ "-i"; "-s"; "-S"; "-X"; "GET"; "https://api.test/"
     ; "-w"; "\n%{http_code}\n%{time_total}" ]
     (curl_args ~url:"https://api.test/" Freight.Ast.Body_none)
 
 let test_golden_curl_file_body_post _ =
   assert_args
-    [ "-i"; "-s"; "-X"; "POST"; "--data-binary"; "@payload.json"
+    [ "-i"; "-s"; "-S"; "-X"; "POST"; "--data-binary"; "@payload.json"
     ; "https://api.test/x"; "-w"; "\n%{http_code}\n%{time_total}" ]
     (curl_args ~method_:Freight.Ast.Post ~url:"https://api.test/x"
        (Freight.Ast.Body_file "payload.json"))
 
 let test_golden_curl_file_body_put _ =
   assert_args
-    [ "-i"; "-s"; "-X"; "PUT"; "-T"; "payload.json"
+    [ "-i"; "-s"; "-S"; "-X"; "PUT"; "-T"; "payload.json"
     ; "https://api.test/x"; "-w"; "\n%{http_code}\n%{time_total}" ]
     (curl_args ~method_:Freight.Ast.Put ~url:"https://api.test/x"
        (Freight.Ast.Body_file "payload.json"))
 
 let test_golden_curl_multipart _ =
   assert_args
-    [ "-i"; "-s"; "-X"; "POST"
+    [ "-i"; "-s"; "-S"; "-X"; "POST"
     ; "-F"; "file=@./f.xlsx;type=application/vnd.ms-excel;filename=f.xlsx"
     ; "-F"; "note=hello"
     ; "https://api.test/imports"; "-w"; "\n%{http_code}\n%{time_total}" ]
@@ -670,7 +670,7 @@ let test_golden_curl_multipart _ =
 
 let test_golden_curl_save_explicit_path _ =
   assert_args
-    [ "-D"; "-"; "-o"; "./out.bin"; "-s"; "-X"; "GET"
+    [ "-D"; "-"; "-o"; "./out.bin"; "-s"; "-S"; "-X"; "GET"
     ; "https://api.test/dl"; "-w"; "\n%{http_code}\n%{time_total}" ]
     (curl_args ~url:"https://api.test/dl"
        ~save_to:(Some { Freight.Ast.save_path = Some "./out.bin"; overwrite = false })
@@ -678,7 +678,7 @@ let test_golden_curl_save_explicit_path _ =
 
 let test_golden_curl_save_no_path_uses_i _ =
   assert_args
-    [ "-i"; "-s"; "-X"; "GET"; "https://api.test/dl"
+    [ "-i"; "-s"; "-S"; "-X"; "GET"; "https://api.test/dl"
     ; "-w"; "\n%{http_code}\n%{time_total}" ]
     (curl_args ~url:"https://api.test/dl"
        ~save_to:(Some { Freight.Ast.save_path = None; overwrite = false })
@@ -1498,6 +1498,85 @@ let test_unresolved_request_with_resolver _ =
   assert_equal [ "a"; "b" ]
     (Freight.Resolve.unresolved_request_r resolver request)
 
+let test_file_variables _ =
+  let source =
+    "@x = old\r\n@x= y=a\r\n@empty =\r\n###\r\n# @name first\r\nGET https://example.test/{{x}}\r\n###\r\nPOST https://example.test\r\n\r\n@x = body text"
+  in
+  (match Freight.Parser.parse_string source with
+   | Error error -> assert_failure error.message
+   | Ok file ->
+     assert_equal (Some "y=a") (List.assoc_opt "x" file.variables);
+     assert_equal (Some "") (List.assoc_opt "empty" file.variables);
+     (match file.requests with
+      | [ first; second ] ->
+        assert_equal Freight.Ast.Get first.method_;
+        assert_equal (Some "first") first.name;
+        assert_equal (Freight.Ast.Body_inline "@x = body text") second.body
+      | _ -> assert_failure "expected two requests"));
+  assert_equal None (Freight.Parser.request_at_cursor source 0);
+  assert_bool "request cursor keeps its original line"
+    (Option.is_some (Freight.Parser.request_at_cursor source 5));
+  match Freight.Parser.parse_source_with_lines source with
+  | Ok pairs -> assert_equal [ 5; 8 ] (List.map fst pairs)
+  | Error error -> assert_failure error.message
+
+let test_file_variables_only _ =
+  match Freight.Parser.parse_string "# variables\n@x = y\n" with
+  | Ok file -> assert_equal [] file.requests
+  | Error error -> assert_failure error.message
+
+let test_file_variables_malformed _ =
+  List.iter
+    (fun declaration ->
+      match Freight.Parser.parse_string ("# vars\n" ^ declaration ^ "\nGET https://example.test") with
+      | Error error -> assert_equal 2 error.line
+      | Ok _ -> assert_failure ("accepted malformed declaration: " ^ declaration))
+    [ "@x"; "@ = y"; "@bad name = y" ]
+
+let test_file_variables_same_block _ =
+  let source =
+    "@x = first\nGET https://example.test/{{x}}\n###\n@x = last\nGET https://example.test/{{x}}"
+  in
+  List.iter
+    (fun cursor_line ->
+      match Freight.Resolve.at_cursor ~source ~cursor_line
+              ~env:(Freight.Env.of_list [ "x", "dotenv" ]) with
+      | Ok request -> assert_equal "https://example.test/last" request.url
+      | Error _ -> assert_failure "could not resolve request with file variables")
+    [ 1; 4 ]
+
+let test_file_variables_literal _ =
+  let source = "@x = {{y}}\n@y = value\nGET https://example.test/{{x}}" in
+  match Freight.Resolve.at_cursor ~source ~cursor_line:2 ~env:Freight.Env.empty with
+  | Ok request -> assert_equal "https://example.test/{{y}}" request.url
+  | Error _ -> assert_failure "could not resolve literal file variable"
+
+let test_file_variables_reject_orphan_metadata _ =
+  List.iter
+    (fun directive ->
+      let source = "@x = y\n" ^ directive ^ "\n###\nGET https://example.test/{{x}}" in
+      let check = function
+        | Error error ->
+          assert_equal 2 error.Freight.Ast.line;
+          assert_equal directive error.snippet
+        | Ok _ -> assert_failure ("discarded orphan metadata: " ^ directive)
+      in
+      check (Freight.Parser.parse_string source);
+      check (Freight.Parser.parse_variables source))
+    [ "# @expect status invalid"; "# @expect status 200"; "# @name login" ];
+  match Freight.Parser.parse_string "@x = y\n# ordinary comment\n###\nGET https://example.test" with
+  | Ok file -> assert_equal 1 (List.length file.requests)
+  | Error error -> assert_failure error.message
+
+let file_variable_tests =
+  [ "file variables" >:: test_file_variables
+  ; "same-block declarations" >:: test_file_variables_same_block
+  ; "literal declaration values" >:: test_file_variables_literal
+  ; "variables only" >:: test_file_variables_only
+  ; "malformed variables" >:: test_file_variables_malformed
+  ; "orphan request metadata" >:: test_file_variables_reject_orphan_metadata
+  ]
+
 let suite =
   "freight"
   >::: [
@@ -1651,4 +1730,4 @@ let suite =
          "unresolved_request_with_resolver" >:: test_unresolved_request_with_resolver;
        ]
 
-let () = run_test_tt_main suite
+let () = run_test_tt_main ("All" >::: [ suite; "File variables" >::: file_variable_tests ])

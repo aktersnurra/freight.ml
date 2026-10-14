@@ -1,3 +1,7 @@
+val parse_variables : string -> ((string * string) list, Ast.parse_error) result
+(** File-wide declarations from request preambles, with the last declaration
+    winning. Declaration values are literal and request bodies are untouched. *)
+
 val parse_string : string -> (Ast.http_file, Ast.parse_error) result
 val parse_file : string -> (Ast.http_file, Ast.parse_error) result
 val parse_source_with_lines : string -> ((int * Ast.request) list, Ast.parse_error) result
